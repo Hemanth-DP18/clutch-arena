@@ -111,9 +111,18 @@ router.post('/players/register',async(req,res)=>{
   const input=req.body||{};const username=String(input.username||'').trim().toLowerCase();const displayName=String(input.displayName||'').trim();const password=String(input.password||'');const uid=String(input.uid||'').trim();
   if(!/^[a-z0-9_]{4,20}$/.test(username)||displayName.length<2||displayName.length>30||password.length<10||password.length>128||(uid&&!validPlayerUid(uid)))return bad(res,'Use a 4–20 character username, display name, and password of at least 10 characters. Game UID is optional.');
   const salt=randomBytes(16).toString('hex');const passwordHash=makePasswordHash(password,salt);const token=randomBytes(32).toString('hex');const id=randomUUID();
-  try{await pool.query('INSERT INTO ca_players(id,username,password_salt,password_hash,token_hash,profile) VALUES($1,$2,$3,$4,$5,$6::jsonb)',[id,username,salt,passwordHash,digest(token),JSON.stringify({displayName,uid,createdAt:new Date().toISOString()})]);}
-  catch(error:any){if(error?.code==='23505')return bad(res,'That username is already taken. Choose another.',409);throw error;}
-  res.status(201).json({token,profile:{id,username,displayName,uid:uid||''}});
+  let caid='';
+  for(let attempt=0;attempt<8;attempt++){
+    caid='CAID-'+randomBytes(4).toString('hex').toUpperCase();
+    try{
+      await pool.query('INSERT INTO ca_players(id,username,password_salt,password_hash,token_hash,profile) VALUES($1,$2,$3,$4,$5,$6::jsonb)',[id,username,salt,passwordHash,digest(token),JSON.stringify({displayName,uid,caid,createdAt:new Date().toISOString()})]);
+      break;
+    }catch(error:any){
+      if(error?.code==='23505' && String(error?.constraint||'').includes('username'))return bad(res,'That username is already taken. Choose another.',409);
+      if(error?.code!=='23505'||attempt===7)throw error;
+    }
+  }
+  res.status(201).json({token,profile:{id,username,displayName,uid:uid||'',caid}});
 });
 router.post('/players/login',async(req,res)=>{
   const username=String(req.body?.username||'').trim().toLowerCase();const password=String(req.body?.password||'');
@@ -130,11 +139,12 @@ router.post('/events/:id/players/register',async(req,res)=>{
   const event=await getEvent(req.params.id);if(!event)return bad(res,'Event not found',404);if(event.format!=='Solo')return bad(res,'This event is for squads. Use team registration instead.',409);
   const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));if(!player)return bad(res,'Sign in to your individual profile before registering.',401);
   const playerUid=validPlayerUid(player.uid)?player.uid:'';
+  if(!player.caid)return bad(res,'Your player profile is missing its CAID. Please sign in again.',409);
   const entrants=await getTeams(event.id);const current=statusFor(event,entrants.length);if(current!=='Registration open')return bad(res,current==='Registration scheduled'?'Registration has not opened yet':'Registration is closed',409);
   if(entrants.some(t=>t.roster?.some(p=>p.playerId===player.id || (playerUid && p.uid===playerUid))))return bad(res,'This player is already registered for this event.',409);
   if(event.teamLimit>0&&entrants.length>=event.teamLimit)return bad(res,'This event has reached its player limit.',409);
   const slot=entrants.length+1;const accessToken=randomBytes(32).toString('hex');const displayName=String(player.displayName).slice(0,30);
-  const entrant:Team={id:randomUUID(),eventId:event.id,name:displayName,captain:displayName,roster:[{name:displayName,uid:playerUid,playerId:player.id}],slot,group:event.type==='Tournament'?'Group '+String.fromCharCode(65+Math.floor(entrants.length/12)):undefined,createdAt:new Date().toISOString(),results:Array.from({length:event.matches},()=>({placement:0,kills:0,confirmed:false})),accessHash:digest(accessToken)};
+  const entrant:Team={id:randomUUID(),eventId:event.id,name:displayName,captain:displayName,roster:[{name:displayName,uid:playerUid,playerId:player.id,caid:player.caid}],slot,group:event.type==='Tournament'?'Group '+String.fromCharCode(65+Math.floor(entrants.length/12)):undefined,createdAt:new Date().toISOString(),results:Array.from({length:event.matches},()=>({placement:0,kills:0,confirmed:false})),accessHash:digest(accessToken)};
   await pool.query('INSERT INTO ca_teams(id,event_id,data) VALUES($1,$2,$3::jsonb)',[entrant.id,event.id,JSON.stringify(entrant)]);
   res.status(201).json({entrant:{id:entrant.id,eventId:event.id,name:entrant.name,slot:entrant.slot,group:entrant.group},accessToken});
 });
@@ -209,7 +219,7 @@ router.post('/teams',async(req,res)=>{
   const name=String(req.body?.name||'').trim();
   if(name.length<2||name.length>40)return bad(res,'Team name must be 2–40 characters.');
   const id=randomUUID(),code='CA-'+randomBytes(4).toString('hex').toUpperCase();
-  const roster=[{playerId:player.id,name:player.displayName,uid:player.uid}];
+  const roster=[{playerId:player.id,name:player.displayName,uid:player.uid||'',caid:player.caid}];
   const data={name,ownerId:player.id,roster,createdAt:new Date().toISOString(),inviteHash:digest(code),inviteCode:code};
   await pool.query('INSERT INTO ca_squads(id,code_hash,data) VALUES($1,$2,$3::jsonb)',[id,digest(code),JSON.stringify(data)]);
   res.status(201).json({squad:{id,name,roster,createdAt:data.createdAt,role:'Captain',inviteCode:code}});
@@ -227,6 +237,25 @@ router.post('/teams/:id/invite',async(req,res)=>{
   await pool.query('UPDATE ca_squads SET code_hash=$2,data=$3::jsonb,updated_at=now() WHERE id=$1',[req.params.id,digest(code),JSON.stringify(data)]);
   res.json({inviteCode:code});
 });
+router.post('/teams/join-by-caid',async(req,res)=>{
+  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\\s+/i,''));
+  if(!player)return bad(res,'Sign in before joining a team.',401);
+  const caid=String(req.body?.captainCaid||'').trim().toUpperCase();
+  if(!/^CAID-[A-F0-9]{8}$/.test(caid))return bad(res,'Enter the captain’s valid CAID.');
+  const captainResult=await pool.query("SELECT id,profile FROM ca_players WHERE upper(profile->>'caid')=$1",[caid]);
+  if(!captainResult.rows[0])return bad(res,'No player account was found for that CAID.',404);
+  const captainId=captainResult.rows[0].id;
+  if(captainId===player.id)return bad(res,'You are already the captain of your own account.',409);
+  const squadResult=await pool.query("SELECT id,data FROM ca_squads WHERE data->>'ownerId'=$1 ORDER BY created_at DESC LIMIT 1",[captainId]);
+  if(!squadResult.rows[0])return bad(res,'That player has not created a team yet.',404);
+  const data=squadResult.rows[0].data;
+  if((data.roster||[]).some((p:any)=>p.playerId===player.id))return bad(res,'You are already on this team.',409);
+  if((data.roster||[]).length>=5)return bad(res,'This team already has five players.',409);
+  data.roster.push({playerId:player.id,name:player.displayName,uid:player.uid||'',caid:player.caid});
+  await pool.query('UPDATE ca_squads SET data=$2::jsonb,updated_at=now() WHERE id=$1',[squadResult.rows[0].id,JSON.stringify(data)]);
+  res.status(201).json({squad:{id:squadResult.rows[0].id,name:data.name,roster:data.roster,createdAt:data.createdAt,role:'Player'}});
+});
+
 router.post('/teams/join',async(req,res)=>{
   const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));
   if(!player)return bad(res,'Sign in before joining a team.',401);
