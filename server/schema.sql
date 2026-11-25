@@ -27,3 +27,4 @@ CREATE INDEX IF NOT EXISTS ca_team_history_team_id_idx ON ca_team_history(team_i
 CREATE TABLE IF NOT EXISTS ca_squads (id text PRIMARY KEY, code_hash text NOT NULL UNIQUE, data jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
 
 CREATE TABLE IF NOT EXISTS ca_players (id text PRIMARY KEY, username text NOT NULL UNIQUE, password_salt text NOT NULL, password_hash text NOT NULL, token_hash text NOT NULL, profile jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
+CREATE UNIQUE INDEX IF NOT EXISTS ca_players_caid_unique_idx ON ca_players (upper(profile->>'caid')) WHERE profile ? 'caid';
