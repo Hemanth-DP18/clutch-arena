@@ -220,7 +220,7 @@ router.post('/teams/join',async(req,res)=>{
   if(data.roster.length>=5)return bad(res,'This team is full.',409);
   data.roster.push({playerId:player.id,name:player.displayName,uid:player.uid});
   data.inviteHash=null;data.inviteCode='';
-  await pool.query('UPDATE ca_squads SET data=$2::jsonb,updated_at=now() WHERE id=$1',[result.rows[0].id,JSON.stringify(data)]);
+  await pool.query('UPDATE ca_squads SET code_hash=$2,data=$3::jsonb,updated_at=now() WHERE id=$1',[result.rows[0].id,digest(randomBytes(32).toString('hex')),JSON.stringify(data)]);
   res.status(201).json({squad:{id:result.rows[0].id,name:data.name,roster:data.roster,createdAt:data.createdAt,role:'Player'}});
 });
 
