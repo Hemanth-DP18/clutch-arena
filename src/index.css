@@ -634,3 +634,6 @@ button:focus-visible,a:focus-visible{outline:2px solid #c4b5fd;outline-offset:3p
 .profile-guest-actions{display:flex;gap:9px;margin-top:16px}
 @media(max-width:800px){.top-actions .account-action{display:inline-flex!important;font-size:9px;padding:8px 10px}}
 @media(max-width:560px){.top-actions .account-action{font-size:0;padding:9px;min-width:36px}.top-actions .account-action:after{content:'👤';font-size:15px}.profile-details-grid{grid-template-columns:1fr}.profile-guest-actions{display:grid;grid-template-columns:1fr 1fr}.profile-guest-actions button{width:100%}}
+
+.tab-profile .hero,.tab-profile .stats,.tab-profile .app-about,.tab-profile .content>.section-head,.tab-profile .content>.layout,.tab-profile .content>.workspace-event-picker,.tab-profile .content>.promo,.tab-profile .promo{display:none!important}
+.tab-profile .content{margin-top:38px}
