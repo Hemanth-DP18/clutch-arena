@@ -45,6 +45,8 @@ export async function checkDatabase() {
       created_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS ca_team_history_event_id_idx ON ca_team_history(event_id);
-    CREATE INDEX IF NOT EXISTS ca_team_history_team_id_idx ON ca_team_history(team_id);\n    CREATE TABLE IF NOT EXISTS ca_notifications (id text PRIMARY KEY, player_id text NOT NULL REFERENCES ca_players(id) ON DELETE CASCADE, data jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now());\n    CREATE INDEX IF NOT EXISTS ca_notifications_player_id_idx ON ca_notifications(player_id,created_at DESC);
+    CREATE INDEX IF NOT EXISTS ca_team_history_team_id_idx ON ca_team_history(team_id);
+    CREATE TABLE IF NOT EXISTS ca_notifications (id text PRIMARY KEY, player_id text NOT NULL REFERENCES ca_players(id) ON DELETE CASCADE, data jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+    CREATE INDEX IF NOT EXISTS ca_notifications_player_id_idx ON ca_notifications(player_id,created_at DESC);
   `);
 }
