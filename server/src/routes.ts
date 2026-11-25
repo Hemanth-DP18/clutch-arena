@@ -178,10 +178,11 @@ router.put('/events/:id/teams/:teamId',async(req,res)=>{
   if(input.paymentStatus!==undefined)team.paymentStatus=input.paymentStatus;
   if(!hasResults&&input.paymentStatus===undefined&&input.slot===undefined)return bad(res,'No team update was supplied');
   if(hasResults&&(!results.length||results.some((r:any)=>r?.confirmed&&(!Number.isInteger(Number(r.placement))||Number(r.placement)<1||Number(r.placement)>Math.max(1,maxPlacement)||!Number.isInteger(Number(r.kills))||Number(r.kills)<0||Number(r.kills)>999))))return bad(res,'Confirmed match results need a valid placement and kills value');
+  const previousResults=team.results.map(r=>({...r}));
   if(hasResults)team.results=team.results.map((old,i)=>results[i]?.confirmed?{placement:Number(results[i].placement),kills:Number(results[i].kills),confirmed:true}:old);
   await saveTeam(team);
   if(!hasResults)return res.json({ok:true,paymentStatus:team.paymentStatus,slot:team.slot,group:team.group});
-  const changed=results.findIndex((r:any,i:number)=>r?.confirmed&&(!teams.find(t=>t.id===team.id)!.results?.[i]?.confirmed));
+  const changed=results.findIndex((r:any,i:number)=>r?.confirmed&&(!previousResults[i]?.confirmed||previousResults[i].placement!==Number(r.placement)||previousResults[i].kills!==Number(r.kills)));
   const matchTeams=await getTeams(event!.id);const groupTeams=matchTeams.filter(t=>event!.type!=='Tournament'||t.group===team.group);
   const complete=changed>=0&&groupTeams.length>0&&groupTeams.every(t=>t.results?.[changed]?.confirmed);
   if(complete&&event!.matchSchedule?.length){event!.matchSchedule=event!.matchSchedule.map(slot=>slot.match===changed+1&&(event!.type!=='Tournament'||slot.group===team.group)?{...slot,status:'Completed',updatedAt:new Date().toISOString()}:slot);if(event!.matchSchedule.every(slot=>slot.status==='Completed')){event!.status='Completed';event!.completedAt=event!.completedAt||new Date().toISOString();}await saveEvent(event!);}
