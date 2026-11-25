@@ -125,6 +125,7 @@ router.post('/players/login',async(req,res)=>{
   res.json({token,profile:{id:row.id,username:row.username,...row.profile}});
 });
 router.get('/players/me',async(req,res)=>{const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));if(!player)return bad(res,'Please sign in again.',401);res.json({profile:player});});
+router.get('/players/notifications',async(req,res)=>{const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));if(!player)return bad(res,'Sign in to view reports.',401);const rows=await pool.query('SELECT id,data FROM ca_notifications WHERE player_id=$1 ORDER BY created_at DESC LIMIT 50',[player.id]);res.json({notifications:rows.rows.map(row=>({id:row.id,...row.data}))});});
 router.post('/events/:id/players/register',async(req,res)=>{
   const event=await getEvent(req.params.id);if(!event)return bad(res,'Event not found',404);if(event.format!=='Solo')return bad(res,'This event is for squads. Use team registration instead.',409);
   const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));if(!player)return bad(res,'Sign in to your individual profile before registering.',401);
@@ -164,6 +165,7 @@ router.post('/events',async(req,res)=>{
 });
 
 router.get('/events/:id',async(req,res)=>{
+  const viewer=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));if(!viewer)return bad(res,'Sign in to view event details.',401);
   const event=await getEvent(req.params.id);
   if(!event) return bad(res,'Event not found',404);
   const teams=await getTeams(event.id);
@@ -266,6 +268,7 @@ router.get('/teams/:id',async(req,res)=>{
 });
 
 router.post('/events/:id/teams/register-code',async(req,res)=>{
+  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));if(!player)return bad(res,'Sign in before registering for an event.',401);
   const event=await getEvent(req.params.id);const input=req.body||{};
   if(!event) return bad(res,'Event not found',404);
   const code=typeof input.teamCode==='string'?input.teamCode.trim().toUpperCase().replace(/\s+/g,''):'';
@@ -289,6 +292,7 @@ router.post('/events/:id/teams/register-code',async(req,res)=>{
   const accessToken=randomBytes(32).toString('hex');
   const team:Team={id:randomUUID(),squadId:squad.id,eventId:event.id,name:squad.name,captain:squad.roster[0].name,roster:squad.roster,slot,group:event.type==='Tournament'?'Group '+String.fromCharCode(65+Math.floor(teams.length/12)):undefined,createdAt:new Date().toISOString(),results:Array.from({length:event.matches},()=>({placement:0,kills:0,confirmed:false})),accessHash:digest(accessToken)};
   await pool.query('INSERT INTO ca_teams(id,event_id,data) VALUES($1,$2,$3::jsonb)',[team.id,event.id,JSON.stringify(team)]);
+  await pool.query('UPDATE ca_squads SET updated_at=now() WHERE id=$1',[squad.id]);
   res.status(201).json({team:{id:team.id,squadId:squad.id,name:team.name,eventId:event.id},accessToken});
 });
 
