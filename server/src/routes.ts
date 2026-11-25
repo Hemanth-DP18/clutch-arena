@@ -65,13 +65,23 @@ const archiveEvent = async (event:Event,teams:Team[]) => {
   }
 };
 export async function cleanupCompletedEvents() {
-  const result=await pool.query("SELECT id,data FROM ca_events WHERE data->>'status'='Completed'");
+  const result=await pool.query("SELECT id,data FROM ca_events WHERE data->>'status'='Completed' AND data->>'completedAt' IS NOT NULL AND (data->>'completedAt')::timestamptz <= now()-interval '10 days'");
   let removed=0;
   for(const row of result.rows) {
     const event={id:row.id,...row.data} as Event;
-    if(!event.completedAt || Date.now()-new Date(event.completedAt).getTime()<24*60*60*1000) continue;
     const teams=await getTeams(event.id);
     await archiveEvent(event,teams);
+    const points=[12,9,8,7,6,5,4,3,2,1,0,0];
+    const standings=teams.map(team=>{
+      const confirmed=(team.results||[]).filter(r=>r.confirmed);
+      const kills=confirmed.reduce((n,r)=>n+Math.max(0,r.kills||0),0);
+      const totalPoints=confirmed.reduce((n,r)=>n+(points[r.placement-1]||0)+Math.max(0,r.kills||0),0);
+      return {teamName:team.name,captain:team.captain,slot:team.slot,group:team.group||'',kills,booyahs:confirmed.filter(r=>r.placement===1).length,totalPoints};
+    }).sort((a,b)=>b.totalPoints-a.totalPoints||b.kills-a.kills);
+    if(event.organizerPlayerId) {
+      await pool.query("INSERT INTO ca_notifications(id,player_id,data) VALUES($1,$2,$3::jsonb) ON CONFLICT(id) DO NOTHING",
+        [randomUUID(),event.organizerPlayerId,JSON.stringify({type:'event_report',eventId:event.id,eventName:event.name,completedAt:event.completedAt,createdAt:new Date().toISOString(),message:'Your event has been archived. Download its final points table.',standings})]);
+    }
     const client=await pool.connect();
     try {
       await client.query('BEGIN');
@@ -87,6 +97,10 @@ export async function cleanupCompletedEvents() {
     }
   }
   return removed;
+}
+export async function cleanupInactiveSquads() {
+  const result=await pool.query("DELETE FROM ca_squads s WHERE s.updated_at <= now()-interval '30 days' AND NOT EXISTS (SELECT 1 FROM ca_teams t JOIN ca_events e ON e.id=t.event_id WHERE t.data->>'squadId'=s.id AND e.data->>'status' <> 'Completed') RETURNING id");
+  return result.rowCount||0;
 }
 
 const requireOrganizer = (event:Event|undefined,token:unknown) => Boolean(event && typeof token==='string' && token.length>0 && digest(token)===event.organizerHash);
@@ -124,7 +138,7 @@ router.post('/events/:id/players/register',async(req,res)=>{
   res.status(201).json({entrant:{id:entrant.id,eventId:event.id,name:entrant.name,slot:entrant.slot,group:entrant.group},accessToken});
 });
 
-router.get('/events',async(_req,res)=>{
+router.get('/events',async(req,res)=>{\n  const viewer=await playerFromToken(req.header('authorization')?.replace(/^Bearer\\s+/i,''));if(!viewer)return bad(res,'Sign in to view events.',401);
   const [events,teams,history]=await Promise.all([
     pool.query('SELECT id,data FROM ca_events ORDER BY created_at DESC'),
     pool.query('SELECT id,event_id,data FROM ca_teams ORDER BY created_at'),
@@ -141,7 +155,7 @@ router.post('/events',async(req,res)=>{
   const matches=Math.max(1,Math.min(30,Number(input.matches)||1));
   const groups=input.type==='Tournament'?Math.max(1,Math.min(26,Math.floor(Number(input.groups)||1))):0;
   const format=input.format==='Solo'?'Solo':'Squad';
-  const event:Event={id:randomUUID(),name:input.name.trim().slice(0,100),game:input.game,type:input.type,format,mode:input.mode==='Clash Squad'?'Clash Squad':'Battle Royale',matches,groups,teamLimit:input.type==='Tournament'?groups*12:Math.max(0,Math.min(10000,Math.floor(Number(input.teamLimit)||0))),status:'Registration open',stage:'Open Qualifier',createdAt:new Date().toISOString(),organizerHash:digest(input.organizerToken)};
+  const host=await playerFromToken(req.header('authorization')?.replace(/^Bearer\\s+/i,''));\n  if(!host)return bad(res,'Sign in before creating an event.',401);\n  const event:Event={id:randomUUID(),organizerPlayerId:host.id,name:input.name.trim().slice(0,100),game:input.game,type:input.type,format,mode:input.mode==='Clash Squad'?'Clash Squad':'Battle Royale',matches,groups,teamLimit:input.type==='Tournament'?groups*12:Math.max(0,Math.min(10000,Math.floor(Number(input.teamLimit)||0))),status:'Registration open',stage:'Open Qualifier',createdAt:new Date().toISOString(),organizerHash:digest(input.organizerToken)};
   await pool.query('INSERT INTO ca_events(id,data) VALUES($1,$2::jsonb)',[event.id,JSON.stringify(event)]);
   res.status(201).json({event:safeEvent(event)});
 });
