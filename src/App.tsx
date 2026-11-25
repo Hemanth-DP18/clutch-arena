@@ -80,7 +80,7 @@ export default function App() {
       setTeamHistory(publicHistory);
       setActiveId(id);
       const relatedEventIds=publicTeams.filter(team=>linkedNames.has(team.name.trim().toLowerCase())).map(team=>team.eventId);
-      const detailIds = Array.from(new Set([id,...publicTeams.filter(team=>teamTokens[team.id] || team.id===linkedTeamId).map(team=>team.eventId),...relatedEventIds].filter(eventId=>list.some(item=>item.id===eventId))));
+      const detailIds = Array.from(new Set([id,...publicTeams.map(team=>team.eventId),...relatedEventIds].filter(eventId=>list.some(item=>item.id===eventId))));
       const details = await Promise.all(detailIds.map(async eventId => {
         const detail = await api.get('/api/events/' + encodeURIComponent(eventId));
         return [eventId,detail.data.event] as const;
@@ -318,7 +318,9 @@ export default function App() {
   const matchSorted = useMemo(()=>activeTeams.map(t=>{const r=t.results?.[selectedMatch]||{placement:0,kills:0,confirmed:false};return {...t,result:r,matchPoints:r.confirmed?score(r):0};}).sort((a,b)=>(a.result.placement||999)-(b.result.placement||999)||b.matchPoints-a.matchPoints),[activeTeams,selectedMatch]);
   const filtered = events.filter(e=>(e.name+' '+e.game+' '+e.type).toLowerCase().includes(search.toLowerCase()));
   const linkedSquads = useMemo(()=>{
-    const linked=Object.keys(teamTokens).map(id=>teams.find(team=>team.id===id)).filter((team):team is Team=>!!team);
+    // The public Team directory lists every squad actually created through event registration.
+    // Private access links are still required for room credentials and team-only actions.
+    const linked=teams.filter(team=>!!team.name?.trim() && Array.isArray(team.roster) && team.roster.length>0);
     const unique=new Map<string,Team>();
     linked.forEach(team=>{const key=team.name.trim().toLowerCase();if(!unique.has(key))unique.set(key,team);});
     return Array.from(unique.values()).map(team=>{
