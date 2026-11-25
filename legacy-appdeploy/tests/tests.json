@@ -1,0 +1,75 @@
+[
+  {
+    "name": "Role-specific manager, team and spectator workspaces",
+    "sanity": true,
+    "viewport": "desktop",
+    "covers": [
+      "manager-only workspace",
+      "team-only workspace",
+      "public match-view link",
+      "role-based access separation"
+    ],
+    "description": "Checks that each share link opens only the relevant interface and spectators receive read-only match information.",
+    "steps": [
+      "Create an event and open its private manager link",
+      "Register a team and open its private team link",
+      "Copy the public match-view link from event details",
+      "Open the public link in a fresh browser"
+    ],
+    "expected": "Manager sees only event controls, team sees its dashboard, and spectators see schedule and standings without private controls."
+  },
+  {
+    "name": "Team dashboard shows current registrations and previous event history",
+    "viewport": "mobile",
+    "covers": [
+      "team profile and roster",
+      "current team events",
+      "completed event history",
+      "career kills and points summary",
+      "history retained after event cleanup"
+    ],
+    "description": "Verifies a linked squad can review its roster, active registrations, completed event results and archived history.",
+    "steps": [
+      "Register a squad in an event and open its private team link",
+      "Open My Team and review the squad profile and current event",
+      "Complete the event and wait for its cleanup archive to be available",
+      "Refresh My Team"
+    ],
+    "expected": "The dashboard shows the squad profile, active events, and completed event records with kills, Booyahs and total points, including after the original event is removed."
+  },
+  {
+    "name": "Deleted event is absent from listings and stale links",
+    "viewport": "mobile",
+    "covers": [
+      "event deletion",
+      "deleted event excluded from discovery",
+      "stale manager link rejection",
+      "stale team link rejection"
+    ],
+    "description": "Checks deletion is reflected after refresh and old private links do not display removed event data.",
+    "steps": [
+      "Create an event and register a team",
+      "Delete it from Manager and confirm",
+      "Refresh the public event list",
+      "Open the old manager and team links"
+    ],
+    "expected": "The deleted event is not listed and old private links show no event or team details."
+  },
+  {
+    "name": "Spectator match details and standings",
+    "viewport": "desktop",
+    "covers": [
+      "public match schedule",
+      "match-wise points table",
+      "overall points table",
+      "read-only public viewer"
+    ],
+    "description": "Checks public viewers can inspect match information without manager or team credentials.",
+    "steps": [
+      "Publish an event schedule and enter match results",
+      "Copy the public match-view link",
+      "Open it without organizer or team credentials"
+    ],
+    "expected": "The viewer sees schedule, match-wise and overall standings, with no room credentials or manager controls."
+  }
+]
