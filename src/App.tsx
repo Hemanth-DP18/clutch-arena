@@ -338,7 +338,8 @@ export default function App() {
   const linkedSquads = useMemo(()=>{
     // The public Team directory lists every squad actually created through event registration.
     // Private access links are still required for room credentials and team-only actions.
-    const linked=teams.filter(team=>!!team.name?.trim() && Array.isArray(team.roster) && team.roster.length>0);
+    const ownedTeamIds=new Set(Object.keys(teamTokens));
+    const linked=teams.filter(team=>ownedTeamIds.has(team.id) && !!team.name?.trim() && Array.isArray(team.roster) && team.roster.length>0);
     const unique=new Map<string,Team>();
     linked.forEach(team=>{const key=team.name.trim().toLowerCase();if(!unique.has(key))unique.set(key,team);});
     return Array.from(unique.values()).map(team=>{
