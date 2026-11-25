@@ -488,3 +488,19 @@ footer{font-size:9px;padding-top:26px;padding-bottom:26px}
  .hosted-event-row .event-info b{font-size:12px}
  .hosted-event-row .event-info small{font-size:9px}
 }
+
+
+/* Focused event workspaces: standings are tables, manager sees only owned events. */
+.tab-standings .hero,.tab-standings .stats,.tab-standings .app-about,.tab-standings .promo,.tab-manage .hero,.tab-manage .stats,.tab-manage .app-about,.tab-manage .promo{display:none!important}
+.standings-mode .events-panel,.standings-mode .detail-panel,.manage-mode .events-panel{display:none!important}
+.workspace-event-picker{margin:0 0 20px;padding:clamp(14px,2.5vw,22px);background:linear-gradient(145deg,#171d30,#101522);border-color:#a48aff30}
+.workspace-event-picker .event-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:8px}
+.workspace-event-picker .event-row{border:1px solid #ffffff12;background:#0c1220}
+.workspace-event-picker .event-row.selected{border-color:#9d83ff;background:linear-gradient(100deg,#2a2345,#1a1e31)}
+.tab-standings .standings-panel{margin-top:0}
+.tab-standings .standings-panel>.panel-head:first-child{padding-bottom:18px}
+.tab-manage .detail-panel{width:100%}
+.tab-manage .layout{display:block}
+.tab-manage .detail-panel{max-width:none}
+.team-portal{display:none!important}
+@media(max-width:600px){.workspace-event-picker .event-list{grid-template-columns:1fr}.tab-manage .detail-panel{padding:13px}}
