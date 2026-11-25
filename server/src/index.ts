@@ -4,7 +4,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { checkDatabase, pool } from './db.js';
-import apiRoutes, { cleanupCompletedEvents } from './routes.js';
+import apiRoutes, { cleanupCompletedEvents, cleanupInactiveSquads } from './routes.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -53,7 +53,7 @@ const server = app.listen(port, () => {
   console.log(`Clutch Arena API listening on port ${port}`);
 });
 
-// Archive team results, then remove completed events 24 hours after completion.
+// Archive final standings and notify the host before removing completed events after 10 days. Remove squads inactive for 30 days.
 let cleanupRunning=false;
 const runCleanup=async()=>{
   if(cleanupRunning) return;
