@@ -54,6 +54,31 @@ const archiveEvent = async (event:Event,teams:Team[]) => {
     await pool.query('INSERT INTO ca_team_history(id,event_id,team_id,data) VALUES($1,$2,$3,$4::jsonb) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data',[id,event.id,team.id,JSON.stringify(history)]);
   }
 };
+export async function cleanupCompletedEvents() {
+  const result=await pool.query("SELECT id,data FROM ca_events WHERE data->>'status'='Completed'");
+  let removed=0;
+  for(const row of result.rows) {
+    const event={id:row.id,...row.data} as Event;
+    if(!event.completedAt || Date.now()-new Date(event.completedAt).getTime()<24*60*60*1000) continue;
+    const teams=await getTeams(event.id);
+    await archiveEvent(event,teams);
+    const client=await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM ca_teams WHERE event_id=$1',[event.id]);
+      await client.query('DELETE FROM ca_events WHERE id=$1',[event.id]);
+      await client.query('COMMIT');
+      removed++;
+    } catch(error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+  return removed;
+}
+
 const requireOrganizer = (event:Event|undefined,token:unknown) => Boolean(event && typeof token==='string' && token.length>0 && digest(token)===event.organizerHash);
 const requireTeam = (team:Team|undefined,eventId:string,token:unknown) => Boolean(team && team.eventId===eventId && typeof token==='string' && token.length>0 && digest(token)===team.accessHash);
 
