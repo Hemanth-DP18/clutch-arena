@@ -92,7 +92,8 @@ export default function App() {
     const requestId = ++refreshSequence.current;
     setLoading(true);
     try {
-      if(!playerToken){setLoading(false);setShowAccount(true);return;}\n      const response = await api.get('/api/events',{Authorization:'Bearer '+playerToken});
+      if(!playerToken){setLoading(false);setShowAccount(true);return;}
+      const response = await api.get('/api/events',{Authorization:'Bearer '+playerToken});
       if (requestId !== refreshSequence.current) return;
       const list = (response.data.events || []) as EventItem[];
       const publicTeams = (response.data.teams || []) as Team[];
@@ -156,7 +157,7 @@ export default function App() {
       return;
     }
     void refresh();
-  }, []);
+  }, [playerToken]);
   useEffect(() => { localStorage.setItem('ca-organizer-links',JSON.stringify(organizerTokens)); },[organizerTokens]);
   useEffect(() => { localStorage.setItem('ca-team-access',JSON.stringify(teamTokens)); },[teamTokens]);
   useEffect(() => { localStorage.setItem('ca-squad-access',JSON.stringify(squadTokens)); },[squadTokens]);
