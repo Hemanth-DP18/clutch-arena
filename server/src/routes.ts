@@ -142,7 +142,7 @@ router.post('/teams',async(req,res)=>{
   const id=randomUUID();
   const code='CA-'+randomBytes(4).toString('hex').toUpperCase();
   const codeHash=digest(code);
-  const squad:Squad={id,name:input.name.trim(),roster:input.players.map(p=>({name:p.name.trim(),uid:p.uid.trim()})),createdAt:new Date().toISOString(),accessHash,codeHash};
+  const squad:Squad={id,name:input.name.trim(),roster:input.players.map((p:{name:string;uid:string})=>({name:p.name.trim(),uid:p.uid.trim()})),createdAt:new Date().toISOString(),accessHash,codeHash};
   try {
     await pool.query('INSERT INTO ca_squads(id,code_hash,data) VALUES($1,$2,$3::jsonb)',[id,codeHash,JSON.stringify({name:squad.name,roster:squad.roster,createdAt:squad.createdAt,accessHash})]);
   } catch(error:any) {
