@@ -193,7 +193,7 @@ export default function App() {
   };
   const submitAccount = async () => {
     if(!accountUsername.trim()||!accountPassword)return flash('Enter your username and password.');
-    try{const endpoint=accountMode==='register'?'/api/players/register':'/api/players/login';const payload=accountMode==='register'?{username:accountUsername,displayName:accountDisplayName,password:accountPassword}:{username:accountUsername,password:accountPassword};const response=await api.post(endpoint,payload);setPlayerToken(response.data.token);localStorage.setItem('ca-player-token',response.data.token);setPlayerProfile(response.data.profile);setShowAccount(false);setAccountPassword('');flash(accountMode==='register'?'Your player profile has been created.':'Welcome back to ClutchArena.');}catch(e:any){flash(e?.response?.data?.error||'Account action failed.');}
+    try{const endpoint=accountMode==='register'?'/api/players/register':'/api/players/login';const payload=accountMode==='register'?{username:accountUsername,displayName:accountDisplayName,password:accountPassword}:{username:accountUsername,password:accountPassword};const response=await api.post(endpoint,payload);setPlayerToken(response.data.token);localStorage.setItem('ca-player-token',response.data.token);setPlayerProfile(response.data.profile);setShowAccount(false);setAccountPassword('');setTab('Profile');flash(accountMode==='register'?'Your player profile and permanent CAID have been created.':'Welcome back to ClutchArena.');}catch(e:any){flash(e?.response?.data?.error||'Account action failed.');}
   };
   const registerSolo = async () => {
     if(!active||!playerToken)return flash('Sign in to your individual player profile first.');
