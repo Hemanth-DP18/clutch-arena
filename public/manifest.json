@@ -1,0 +1,11 @@
+{
+  "name": "Clutch Arena",
+  "short_name": "Clutch Arena",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#080b14",
+  "theme_color": "#080b14",
+  "icons": [
+    { "src": "/clutcharena-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
