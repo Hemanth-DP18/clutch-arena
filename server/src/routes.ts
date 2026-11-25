@@ -248,7 +248,7 @@ router.post('/teams/:id/invite',async(req,res)=>{
   res.json({inviteCode:code});
 });
 router.post('/teams/join-by-caid',async(req,res)=>{
-  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\\s+/i,''));
+  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));
   if(!player)return bad(res,'Sign in before joining a team.',401);
   const caid=String(req.body?.captainCaid||'').trim().toUpperCase();
   if(!/^CAID-[A-F0-9]{8}$/.test(caid))return bad(res,'Enter the captain’s valid CAID.');
