@@ -174,6 +174,7 @@ router.get('/events/:id',async(req,res)=>{
 });
 
 router.post('/events/:id/teams',async(req,res)=>{
+  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));if(!player)return bad(res,'Sign in before registering for an event.',401);
   const event=await getEvent(req.params.id); const input=req.body||{};
   if(!event) return bad(res,'Event not found',404);
   const teams=await getTeams(event.id);
