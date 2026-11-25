@@ -137,10 +137,6 @@ export default function App() {
   }, []);
   useEffect(() => { localStorage.setItem('ca-organizer-links',JSON.stringify(organizerTokens)); },[organizerTokens]);
   useEffect(() => { localStorage.setItem('ca-team-access',JSON.stringify(teamTokens)); },[teamTokens]);
-  useEffect(() => {
-    if (!linkedSquads.length) { setSelectedSquadId(''); return; }
-    if (!linkedSquads.some(squad=>squad.team.id===selectedSquadId)) setSelectedSquadId(linkedSquads[0].team.id);
-  },[linkedSquads,selectedSquadId]);
   useEffect(() => { const timer=window.setInterval(()=>{ if(activeId) void refresh(activeId); },60000); return ()=>window.clearInterval(timer); },[activeId]);
   useEffect(() => { if (!active) return; setRegistrationOpensAt(toLocalInput(active.registrationOpensAt)); setRegistrationClosesAt(toLocalInput(active.registrationClosesAt)); setManageGroups(active.groups||1); setManageTeamLimit(active.teamLimit||0); setAutoScheduleStartAt(toLocalInput(active.autoScheduleStartAt)); setMatchIntervalMinutes(active.matchIntervalMinutes||30); setSelectedScheduleId(active.matchSchedule?.[0]?.id||''); },[active?.id]);
   useEffect(() => {
@@ -358,6 +354,10 @@ export default function App() {
       return {team,activeEvents,completedEvents,archived,kills,pointsTotal,booyahs};
     });
   },[teamTokens,teams,events,teamHistory]);
+  useEffect(() => {
+    if (!linkedSquads.length) { setSelectedSquadId(''); return; }
+    if (!linkedSquads.some(squad=>squad.team.id===selectedSquadId)) setSelectedSquadId(linkedSquads[0].team.id);
+  },[linkedSquads,selectedSquadId]);
   const visibleSquads = selectedSquadId ? linkedSquads.filter(squad=>squad.team.id===selectedSquadId) : linkedSquads.slice(0,1);
   const leaveTeamDashboard = () => {
     history.pushState({clutchTab:'Discover'},'',location.pathname+location.search);
