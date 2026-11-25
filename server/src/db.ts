@@ -35,6 +35,7 @@ export async function checkDatabase() {
       updated_at timestamptz NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS ca_teams_event_id_idx ON ca_teams(event_id);
+    CREATE TABLE IF NOT EXISTS ca_squads (id text PRIMARY KEY, code_hash text NOT NULL UNIQUE, data jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE IF NOT EXISTS ca_team_history (
       id text PRIMARY KEY,
       event_id text NOT NULL,
