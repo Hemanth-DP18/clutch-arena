@@ -9,7 +9,7 @@ type Event = { id:string; name:string; game:string; type:'Tournament'|'Scrim'; f
 const router = Router();
 const digest = (value:string) => createHash('sha256').update(value).digest('hex');
 const makePasswordHash=(password:string,salt:string)=>scryptSync(password,salt,64).toString('hex');
-const validPlayerUid=(uid:unknown)=>typeof uid==='string'&&/^\\d{5,20}$/.test(uid.trim());
+const validPlayerUid=(uid:unknown)=>typeof uid==='string'&&/^\d{5,20}$/.test(uid.trim());
 const playerFromToken=async(token:unknown)=>{if(typeof token!=='string'||token.length<32)return undefined;const result=await pool.query('SELECT id,username,profile FROM ca_players WHERE token_hash=$1',[digest(token)]);return result.rows[0]?{id:result.rows[0].id,username:result.rows[0].username,...result.rows[0].profile}:undefined;};
 const bad = (res:Response,message:string,status=400) => res.status(status).json({error:message});
 const safeEvent = (event:Event) => { const {organizerHash,roomId,roomPassword,...visible}=event; return visible; };
@@ -110,10 +110,10 @@ router.post('/players/login',async(req,res)=>{
   const token=randomBytes(32).toString('hex');await pool.query('UPDATE ca_players SET token_hash=$2,updated_at=now() WHERE id=$1',[row.id,digest(token)]);
   res.json({token,profile:{id:row.id,username:row.username,...row.profile}});
 });
-router.get('/players/me',async(req,res)=>{const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\\s+/i,''));if(!player)return bad(res,'Please sign in again.',401);res.json({profile:player});});
+router.get('/players/me',async(req,res)=>{const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));if(!player)return bad(res,'Please sign in again.',401);res.json({profile:player});});
 router.post('/events/:id/players/register',async(req,res)=>{
   const event=await getEvent(req.params.id);if(!event)return bad(res,'Event not found',404);if(event.format!=='Solo')return bad(res,'This event is for squads. Use team registration instead.',409);
-  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\\s+/i,''));if(!player)return bad(res,'Sign in to your individual profile before registering.',401);
+  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));if(!player)return bad(res,'Sign in to your individual profile before registering.',401);
   if(!validPlayerUid(player.uid))return bad(res,'Add a valid game UID to your profile before registering.');
   const entrants=await getTeams(event.id);const current=statusFor(event,entrants.length);if(current!=='Registration open')return bad(res,current==='Registration scheduled'?'Registration has not opened yet':'Registration is closed',409);
   if(entrants.some(t=>t.roster?.some(p=>p.uid===player.uid)))return bad(res,'This player UID is already registered for this event.',409);
