@@ -109,11 +109,11 @@ const requireTeam = (team:Team|undefined,eventId:string,token:unknown) => Boolea
 
 router.post('/players/register',async(req,res)=>{
   const input=req.body||{};const username=String(input.username||'').trim().toLowerCase();const displayName=String(input.displayName||'').trim();const password=String(input.password||'');const uid=String(input.uid||'').trim();
-  if(!/^[a-z0-9_]{4,20}$/.test(username)||displayName.length<2||displayName.length>30||password.length<10||password.length>128||!validPlayerUid(uid))return bad(res,'Use a 4–20 character username, display name, password of at least 10 characters, and a 5–20 digit game UID.');
+  if(!/^[a-z0-9_]{4,20}$/.test(username)||displayName.length<2||displayName.length>30||password.length<10||password.length>128||(uid&&!validPlayerUid(uid)))return bad(res,'Use a 4–20 character username, display name, and password of at least 10 characters. Game UID is optional.');
   const salt=randomBytes(16).toString('hex');const passwordHash=makePasswordHash(password,salt);const token=randomBytes(32).toString('hex');const id=randomUUID();
   try{await pool.query('INSERT INTO ca_players(id,username,password_salt,password_hash,token_hash,profile) VALUES($1,$2,$3,$4,$5,$6::jsonb)',[id,username,salt,passwordHash,digest(token),JSON.stringify({displayName,uid,createdAt:new Date().toISOString()})]);}
   catch(error:any){if(error?.code==='23505')return bad(res,'That username is already taken. Choose another.',409);throw error;}
-  res.status(201).json({token,profile:{id,username,displayName,uid}});
+  res.status(201).json({token,profile:{id,username,displayName,uid:uid||''}});
 });
 router.post('/players/login',async(req,res)=>{
   const username=String(req.body?.username||'').trim().toLowerCase();const password=String(req.body?.password||'');
@@ -129,18 +129,18 @@ router.get('/players/notifications',async(req,res)=>{const player=await playerFr
 router.post('/events/:id/players/register',async(req,res)=>{
   const event=await getEvent(req.params.id);if(!event)return bad(res,'Event not found',404);if(event.format!=='Solo')return bad(res,'This event is for squads. Use team registration instead.',409);
   const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));if(!player)return bad(res,'Sign in to your individual profile before registering.',401);
-  if(!validPlayerUid(player.uid))return bad(res,'Add a valid game UID to your profile before registering.');
+  const playerUid=validPlayerUid(player.uid)?player.uid:'';
   const entrants=await getTeams(event.id);const current=statusFor(event,entrants.length);if(current!=='Registration open')return bad(res,current==='Registration scheduled'?'Registration has not opened yet':'Registration is closed',409);
-  if(entrants.some(t=>t.roster?.some(p=>p.uid===player.uid)))return bad(res,'This player UID is already registered for this event.',409);
+  if(entrants.some(t=>t.roster?.some(p=>p.playerId===player.id || (playerUid && p.uid===playerUid))))return bad(res,'This player is already registered for this event.',409);
   if(event.teamLimit>0&&entrants.length>=event.teamLimit)return bad(res,'This event has reached its player limit.',409);
   const slot=entrants.length+1;const accessToken=randomBytes(32).toString('hex');const displayName=String(player.displayName).slice(0,30);
-  const entrant:Team={id:randomUUID(),eventId:event.id,name:displayName,captain:displayName,roster:[{name:displayName,uid:player.uid}],slot,group:event.type==='Tournament'?'Group '+String.fromCharCode(65+Math.floor(entrants.length/12)):undefined,createdAt:new Date().toISOString(),results:Array.from({length:event.matches},()=>({placement:0,kills:0,confirmed:false})),accessHash:digest(accessToken)};
+  const entrant:Team={id:randomUUID(),eventId:event.id,name:displayName,captain:displayName,roster:[{name:displayName,uid:playerUid,playerId:player.id}],slot,group:event.type==='Tournament'?'Group '+String.fromCharCode(65+Math.floor(entrants.length/12)):undefined,createdAt:new Date().toISOString(),results:Array.from({length:event.matches},()=>({placement:0,kills:0,confirmed:false})),accessHash:digest(accessToken)};
   await pool.query('INSERT INTO ca_teams(id,event_id,data) VALUES($1,$2,$3::jsonb)',[entrant.id,event.id,JSON.stringify(entrant)]);
   res.status(201).json({entrant:{id:entrant.id,eventId:event.id,name:entrant.name,slot:entrant.slot,group:entrant.group},accessToken});
 });
 
 router.get('/events',async(req,res)=>{
-  const viewer=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));if(!viewer)return bad(res,'Sign in to view events.',401);
+  const viewer=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));
   const [events,teams,history]=await Promise.all([
     pool.query('SELECT id,data FROM ca_events ORDER BY created_at DESC'),
     pool.query('SELECT id,event_id,data FROM ca_teams ORDER BY created_at'),
@@ -165,7 +165,7 @@ router.post('/events',async(req,res)=>{
 });
 
 router.get('/events/:id',async(req,res)=>{
-  const viewer=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));if(!viewer)return bad(res,'Sign in to view event details.',401);
+  const viewer=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));
   const event=await getEvent(req.params.id);
   if(!event) return bad(res,'Event not found',404);
   const teams=await getTeams(event.id);
