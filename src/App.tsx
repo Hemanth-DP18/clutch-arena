@@ -92,7 +92,7 @@ export default function App() {
     const requestId = ++refreshSequence.current;
     setLoading(true);
     try {
-      const response = await api.get('/api/events');
+      if(!playerToken){setLoading(false);setShowAccount(true);return;}\n      const response = await api.get('/api/events',{Authorization:'Bearer '+playerToken});
       if (requestId !== refreshSequence.current) return;
       const list = (response.data.events || []) as EventItem[];
       const publicTeams = (response.data.teams || []) as Team[];
@@ -108,7 +108,7 @@ export default function App() {
       const relatedEventIds=publicTeams.filter(team=>linkedNames.has(team.name.trim().toLowerCase())).map(team=>team.eventId);
       const detailIds = Array.from(new Set([id,...publicTeams.map(team=>team.eventId),...relatedEventIds].filter(eventId=>list.some(item=>item.id===eventId))));
       const details = await Promise.all(detailIds.map(async eventId => {
-        const detail = await api.get('/api/events/' + encodeURIComponent(eventId));
+        const detail = await api.get('/api/events/' + encodeURIComponent(eventId),{Authorization:'Bearer '+playerToken});
         return [eventId,detail.data.event] as const;
       }));
       if (requestId !== refreshSequence.current) return;
@@ -178,7 +178,7 @@ export default function App() {
     if (!name.trim()) return flash('Enter an event name first.');
     const organizerToken = token();
     try {
-      const r = await api.post('/api/events',{name:name.trim(),game,type,format,mode,matches,groups,teamLimit,organizerToken});
+      const r = await api.post('/api/events',{name:name.trim(),game,type,format,mode,matches,groups,teamLimit,organizerToken},{Authorization:'Bearer '+playerToken});
       const id = r.data.event.id as string;
       setOrganizerTokens(v=>({...v,[id]:organizerToken}));
       setName(''); setShowCreate(false); location.hash = `manage=${id}&key=${organizerToken}`; setTab('Manage'); await refresh(id);
