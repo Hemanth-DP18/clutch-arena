@@ -572,3 +572,46 @@ footer{font-size:9px;padding-top:26px;padding-bottom:26px}
 .modal .choice{display:flex;gap:8px}.modal .choice button{flex:1;border:1px solid #ffffff20;background:#111729;color:#d9d3ed}.modal .choice button.chosen{border-color:#a78bfa;background:#35265c;color:#fff}
 
 .player-profile-card{margin:0 0 20px;padding:18px 20px;border-color:#9b7bff45;background:radial-gradient(ellipse at 100% 0%,#8b5cf622,transparent 45%),linear-gradient(145deg,#171d30,#101522)}.player-profile-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;padding-top:12px;border-top:1px solid #ffffff10}.player-profile-actions small{color:#aab2c6;font-size:10px;line-height:1.6}@media(max-width:600px){.player-profile-card{padding:14px}.player-profile-actions{align-items:stretch;flex-direction:column}.player-profile-actions button{width:100%}}
+
+
+/* Clutch Arena motion system — subtle, fast and touch-friendly */
+@keyframes ca-fade-up{from{opacity:0;transform:translate3d(0,14px,0)}to{opacity:1;transform:translate3d(0,0,0)}}
+@keyframes ca-soft-glow{0%,100%{box-shadow:0 0 26px #8d68ff20}50%{box-shadow:0 0 42px #8d68ff3b}}
+@keyframes ca-orbit-float{0%,100%{transform:translateY(0) rotate(-8deg)}50%{transform:translateY(-9px) rotate(-5deg)}}
+@keyframes ca-ring-turn{from{transform:rotate(-22deg)}to{transform:rotate(338deg)}}
+@keyframes ca-pulse-dot{0%,100%{opacity:1;box-shadow:0 0 0 0 #73e4b355}50%{opacity:.75;box-shadow:0 0 0 6px #73e4b300}}
+@keyframes ca-shine{0%{background-position:180% 0}100%{background-position:-180% 0}}
+.shell{overflow-x:clip}
+.hero-copy{animation:ca-fade-up .65s cubic-bezier(.2,.7,.2,1) both}
+.hero-art{animation:ca-fade-up .8s .12s cubic-bezier(.2,.7,.2,1) both}
+.hero-cup{animation:ca-orbit-float 5s ease-in-out infinite}
+.ring-one{animation:ca-ring-turn 34s linear infinite}
+.ring-two{animation:ca-ring-turn 48s linear infinite reverse}
+.live-dot{animation:ca-pulse-dot 2.2s ease-in-out infinite}
+.stats{animation:ca-fade-up .55s .16s both}
+.content>.section-head,.content>.layout,.content>.panel,.app-about,.promo,.my-hosted-events{animation:ca-fade-up .48s ease both}
+.panel,.event-row,.hosted-event-row,.registered-event-card,.created-squad-card,.team-dashboard-card,.feature-grid>div{transition:transform .22s ease,border-color .22s ease,background-color .22s ease,box-shadow .22s ease}
+.panel:hover,.registered-event-card:hover,.created-squad-card:hover,.team-dashboard-card:hover{border-color:#a48aff45;box-shadow:0 12px 34px #03050b55}
+.event-row:hover{transform:translateX(3px)}
+.hosted-event-row:hover,.feature-grid>div:hover{transform:translateY(-2px);border-color:#a48aff55}
+.primary,.outline,.dream-team-button,.top nav button,.choice button{transition:transform .18s ease,filter .18s ease,border-color .18s ease,background-color .18s ease,box-shadow .18s ease}
+.primary:active,.outline:active,.dream-team-button:active,.choice button:active{transform:scale(.97)}
+.primary:hover{box-shadow:0 9px 28px #7556d655}
+.outline:hover{transform:translateY(-1px);box-shadow:0 7px 20px #0004}
+.dream-team-banner{animation:ca-fade-up .6s ease both}
+.dream-emblem{animation:ca-orbit-float 4.8s ease-in-out infinite,ca-soft-glow 4s ease-in-out infinite}
+.dream-orbit{animation:ca-ring-turn 28s linear infinite}
+.orbit-b{animation-direction:reverse}
+.modal-bg{animation:ca-modal-backdrop .18s ease both}
+.modal{animation:ca-modal-in .24s cubic-bezier(.2,.8,.2,1) both}
+@keyframes ca-modal-backdrop{from{opacity:0}to{opacity:1}}
+@keyframes ca-modal-in{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+.search:focus,.modal input:focus,.modal select:focus,.modal textarea:focus{border-color:#a48aff;box-shadow:0 0 0 3px #9b7bff20;transition:border-color .18s ease,box-shadow .18s ease;outline:none}
+.status:not(.done){animation:ca-soft-glow 3.8s ease-in-out infinite}
+button:focus-visible,a:focus-visible{outline:2px solid #c4b5fd;outline-offset:3px}
+@media(hover:none){.panel:hover,.registered-event-card:hover,.created-squad-card:hover,.team-dashboard-card:hover,.event-row:hover,.hosted-event-row:hover,.feature-grid>div:hover{transform:none;box-shadow:none}}
+@media(prefers-reduced-motion:reduce){
+ .hero-copy,.hero-art,.stats,.content>.section-head,.content>.layout,.content>.panel,.app-about,.promo,.my-hosted-events,.dream-team-banner,.modal-bg,.modal,.team-portal,.team-card{animation:none!important}
+ .hero-cup,.ring-one,.ring-two,.live-dot,.dream-emblem,.dream-orbit,.status:not(.done){animation:none!important}
+ .panel,.event-row,.hosted-event-row,.registered-event-card,.created-squad-card,.team-dashboard-card,.feature-grid>div,.primary,.outline,.dream-team-button,.top nav button,.choice button{transition:none!important}
+}
