@@ -532,3 +532,24 @@ footer{font-size:9px;padding-top:26px;padding-bottom:26px}
 .registered-room-access button:disabled{opacity:.62;cursor:not-allowed;filter:saturate(.65)}
 .registered-room-access button:not(:disabled):hover{transform:translateY(-1px);box-shadow:0 7px 20px #8a63f333}
 @media(max-width:600px){.team-event-picker{max-width:none;width:100%}.dream-team-copy{width:100%}.dream-team-button{width:100%;justify-content:center}}
+
+
+/* Player command centre: performance and match-day schedule */
+.team-player-performance{margin:4px 0 22px;padding:15px;border:1px solid #a48aff20;border-radius:13px;background:linear-gradient(130deg,#171b2d,#101522)}
+.team-player-performance .team-schedule-head{margin-bottom:10px}
+.team-player-performance .team-performance{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
+.team-player-performance .team-performance>div{min-width:0;padding:13px;border:1px solid #ffffff0c;background:linear-gradient(145deg,#1a2033,#0c1220)}
+.team-player-performance .team-performance small{display:block;color:#9da8c0;font-size:8px;font-weight:800;letter-spacing:.8px}
+.team-player-performance .team-performance b{display:block;margin-top:6px;color:#e4d9ff;font-size:22px;font-variant-numeric:tabular-nums}
+.registered-match-list{margin-top:12px;padding:11px;border:1px solid #ffffff0d;border-radius:10px;background:#090f1b}
+.registered-match-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px;color:#d8cefa}
+.registered-match-heading b{display:flex;align-items:center;gap:6px;font-size:10px}
+.registered-match-heading span{color:#9389ad;font-size:8px;font-weight:800;letter-spacing:.8px}
+.registered-match-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 2px;border-top:1px solid #ffffff0b}
+.registered-match-row>span{min-width:0}
+.registered-match-row b,.registered-match-row small{display:block}
+.registered-match-row b{color:#f1efff;font-size:10px}
+.registered-match-row small{margin-top:3px;color:#929bb1;font-size:9px}
+.registered-match-row .schedule-status{flex-shrink:0}
+.registered-match-empty{display:block;padding:8px 2px;color:#9ca5bb;font-size:9px;line-height:1.6}
+@media(max-width:600px){.team-player-performance{padding:11px}.team-player-performance .team-performance{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.team-player-performance .team-performance>div{padding:11px}.team-player-performance .team-performance b{font-size:19px}.registered-match-row{align-items:flex-start}}
