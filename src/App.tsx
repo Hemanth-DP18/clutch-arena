@@ -336,6 +336,11 @@ export default function App() {
       return {team,activeEvents,completedEvents,archived,kills,pointsTotal,booyahs};
     });
   },[teamTokens,teams,events,teamHistory]);
+  const startTeamCreation = () => {
+    const target = events.find(event=>event.status==='Registration open');
+    if(!target){setTab('Discover');flash('No event is accepting team registrations right now. Explore events and try again when registration opens.');return;}
+    setActiveId(target.id);setTeamName('');setRoster('');setShowJoin(true);
+  };
   const isOrganizer = !!active && !!organizerTokens[active.id];
   const copyViewerLink = () => { if(!active) return; copy(location.origin+location.pathname+'#watch='+active.id); };
   const copy = async (value:string) => { try { await navigator.clipboard.writeText(value); flash('Copied to clipboard.'); } catch { flash('Copy is unavailable in this browser.'); } };
@@ -356,6 +361,16 @@ export default function App() {
         </div>
         {tab==='Team'&&<section className="team-dashboard">
           <div className="team-portal-head"><div><div className="eyebrow">SQUAD COMMAND CENTRE</div><h2>My Team</h2><p>Your squads, current registrations and complete match history.</p></div><button className="outline" onClick={()=>void refresh(activeId)}><RefreshCw size={14}/> Refresh dashboard</button></div>
+          <section className="dream-team-banner">
+            <div className="dream-team-copy">
+              <span className="dream-team-kicker"><Swords size={14}/> YOUR SQUAD. YOUR LEGACY.</span>
+              <h2>CREATE THE <em>DREAM TEAM</em></h2>
+              <p>Four players. One vision. One name to remember. Build your squad, take your place, and make every match count.</p>
+              <button className="primary dream-team-button" onClick={startTeamCreation}><Users size={16}/> Create your team <ArrowRight size={16}/></button>
+              <small>Choose an event that has open registrations to complete your team setup.</small>
+            </div>
+            <div className="dream-team-art" aria-hidden="true"><div className="dream-orbit orbit-a"/><div className="dream-orbit orbit-b"/><div className="dream-emblem"><Trophy size={54}/></div><span className="dream-art-label">BUILT TO COMPETE</span></div>
+          </section>
           {loading?<div className="panel team-empty">Loading your team dashboard…</div>:linkedSquads.length===0?<div className="panel team-empty"><Users size={28}/><h3>No team linked yet</h3><p>Register your squad in an event, or import the private team access link you received after registration.</p><button className="primary" onClick={()=>setTab('Discover')}>Explore events</button></div>:linkedSquads.map((squad,index)=><article className="panel team-dashboard-card" key={squad.team.id}>
             <div className="team-dashboard-title"><div><div className="eyebrow">MY SQUAD · {squad.team.createdAt?'CREATED '+new Date(squad.team.createdAt).toLocaleDateString():'REGISTERED TEAM'}</div><h3>{squad.team.name}</h3><p>Captain: {squad.team.captain} · {squad.team.roster.length} players</p></div><span className="status">{squad.activeEvents.length?'ACTIVE':'HISTORY'}</span></div>
             <div className="team-dashboard-stats"><div><small>TOTAL KILLS</small><b>{squad.kills}</b></div><div><small>BOOYAHS</small><b>{squad.booyahs}</b></div><div><small>CAREER POINTS</small><b>{squad.pointsTotal}</b></div><div><small>EVENTS PLAYED</small><b>{squad.activeEvents.length+squad.completedEvents.length+squad.archived.length}</b></div></div>
