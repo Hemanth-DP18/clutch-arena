@@ -524,3 +524,11 @@ footer{font-size:9px;padding-top:26px;padding-bottom:26px}
 .registered-room-access small{display:block;margin-top:5px;color:#aaa2c4;font-size:9px;line-height:1.6}
 .registered-room-access button{flex-shrink:0}
 @media(max-width:600px){.team-roster-simple{grid-template-columns:1fr}.registered-event-info{gap:7px}.registered-event-info .status{white-space:nowrap}.registered-room-access{align-items:stretch;flex-direction:column}.registered-room-access button{width:100%}}
+
+/* Team creation event picker and clearer room-access states */
+.team-event-picker{display:grid;gap:7px;max-width:360px;margin:18px 0 10px;color:#d6d0ee;font-size:11px;font-weight:800;letter-spacing:.04em;text-align:left}
+.team-event-picker select{width:100%;min-height:44px;padding:0 13px;border:1px solid #8064c966;border-radius:10px;background:#111729;color:#f5f1ff;font:inherit;letter-spacing:normal;outline:none}
+.team-event-picker select:focus{border-color:#b49aff;box-shadow:0 0 0 3px #9c7aff24}
+.registered-room-access button:disabled{opacity:.62;cursor:not-allowed;filter:saturate(.65)}
+.registered-room-access button:not(:disabled):hover{transform:translateY(-1px);box-shadow:0 7px 20px #8a63f333}
+@media(max-width:600px){.team-event-picker{max-width:none;width:100%}.dream-team-copy{width:100%}.dream-team-button{width:100%;justify-content:center}}
