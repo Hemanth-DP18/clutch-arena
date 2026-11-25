@@ -1,4 +1,4 @@
-const base = (import.meta.env.VITE_API_BASE_URL || '').replace(/\\/$/, '');
+const base = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 
 type ApiResponse<T> = { data:T };
 async function request<T>(method:string,path:string,body?:unknown):Promise<ApiResponse<T>> {
@@ -11,7 +11,7 @@ async function request<T>(method:string,path:string,body?:unknown):Promise<ApiRe
   let data:any={};
   try { data=text?JSON.parse(text):{}; } catch { data={error:text||'Unexpected server response'}; }
   if(!response.ok) {
-    const err:any=new Error(data?.error||`Request failed (${response.status})`);
+    const err:any=new Error(data?.error||\`Request failed (\${response.status})\`);
     err.response={status:response.status,data};
     throw err;
   }
