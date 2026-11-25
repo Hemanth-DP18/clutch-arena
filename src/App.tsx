@@ -50,6 +50,7 @@ export default function App() {
   const [rescheduleAt,setRescheduleAt] = useState('');
   const [installPrompt,setInstallPrompt] = useState<any>(null);
   const [teamName,setTeamName] = useState('');
+  const [teamCreateEventId,setTeamCreateEventId] = useState('');
   const [roster,setRoster] = useState('');
   const [organizerTokens,setOrganizerTokens] = useState<Record<string,string>>(() => saved('ca-organizer-links'));
   const [teamTokens,setTeamTokens] = useState<Record<string,string>>(() => saved('ca-team-access'));
@@ -366,9 +367,10 @@ export default function App() {
     document.getElementById('events')?.scrollIntoView({behavior:'smooth',block:'start'});
   };
   const startTeamCreation = () => {
-    const target = events.find(event=>event.status==='Registration open');
+    const openEvents=events.filter(event=>event.status==='Registration open');
+    const target=openEvents.find(event=>event.id===teamCreateEventId)||openEvents.find(event=>event.id===activeId)||openEvents[0];
     if(!target){setTab('Discover');flash('No event is accepting team registrations right now. Explore events and try again when registration opens.');return;}
-    setActiveId(target.id);setTeamName('');setRoster('');setShowJoin(true);
+    setTeamCreateEventId(target.id);setActiveId(target.id);setTeamName('');setRoster('');setShowJoin(true);
   };
   const isOrganizer = !!active && !!organizerTokens[active.id];
   const navigateTab = (next:string) => { history.pushState({clutchTab:next},'',location.pathname+location.search); setTab(next); };
@@ -403,7 +405,7 @@ export default function App() {
         {tab==='Team'&&<section className="team-dashboard">
           <div className="team-portal-head"><div><div className="eyebrow">SQUAD COMMAND CENTRE</div><h2>My Team</h2><p>Create your squad, manage player details and view every event you have registered for.</p></div><div className="team-dashboard-actions"><button className="outline" onClick={()=>void refresh(activeId)}><RefreshCw size={14}/> Refresh</button><button className="outline" onClick={leaveTeamDashboard}>← Back to events</button></div></div>
           <section className="dream-team-banner">
-            <div className="dream-team-copy"><span className="dream-team-kicker"><Swords size={14}/> YOUR SQUAD. YOUR LEGACY.</span><h2>CREATE THE <em>DREAM TEAM</em></h2><p>Build your four-player squad and register it for the competitions you want to play.</p><button className="primary dream-team-button" onClick={startTeamCreation}><Users size={16}/> Create your team <ArrowRight size={16}/></button><small>Select an event with open registrations to complete team creation.</small></div>
+            <div className="dream-team-copy"><span className="dream-team-kicker"><Swords size={14}/> YOUR SQUAD. YOUR LEGACY.</span><h2>CREATE THE <em>DREAM TEAM</em></h2><p>Build your four-player squad and register it for the competitions you want to play.</p><label className="team-event-picker">Choose an event to join<select value={teamCreateEventId} onChange={e=>setTeamCreateEventId(e.target.value)}><option value="">Choose an open event…</option>{events.filter(event=>event.status==='Registration open').map(event=><option key={event.id} value={event.id}>{event.name} · {event.game} · {event.type}</option>)}</select></label><button className="primary dream-team-button" onClick={startTeamCreation}><Users size={16}/> Create your team <ArrowRight size={16}/></button><small>Your team will be registered for the selected event.</small></div>
             <div className="dream-team-art" aria-hidden="true"><div className="dream-orbit orbit-a"/><div className="dream-orbit orbit-b"/><div className="dream-emblem"><Trophy size={54}/></div><span className="dream-art-label">BUILT TO COMPETE</span></div>
           </section>
           {linkedSquads.length>1&&<div className="panel squad-switcher"><label htmlFor="squad-switch">Select your team</label><select id="squad-switch" value={selectedSquadId} onChange={e=>setSelectedSquadId(e.target.value)}>{linkedSquads.map(squad=><option key={squad.team.id} value={squad.team.id}>{squad.team.name}</option>)}</select></div>}
@@ -416,8 +418,8 @@ export default function App() {
                 {registrations.length===0?<div className="schedule-empty">This team has not registered for an event yet.</div>:registrations.map(({event,team,completed})=><div className="registered-event-card" key={event.id}>
                   <div className="registered-event-info"><div><b>{event.name}</b><small>{event.game} · {event.type} · {event.mode}</small><small>{team.group||'Open group'} · Slot {team.slot} · {event.status}</small>{event.matchSchedule?.[0]&&<small>First match: {new Date(event.matchSchedule[0].startsAt).toLocaleString()}</small>}</div><span className={'status '+(completed?'done':'')}>{completed?'COMPLETED':'REGISTERED'}</span></div>
                   {!completed&&<div className="registered-room-access">
-                    <div><b><ShieldCheck size={15}/> Custom Room ID & Password</b><small>{!event.roomPublished?'Waiting for the organiser to publish room details. Credentials will unlock at the event start.':'Room details are published. They become visible when your scheduled match reaches its release time.'}</small></div>
-                    <button className="primary tiny" disabled={!event.roomPublished||!teamTokens[team.id]} onClick={()=>{setActiveId(event.id);setTeamPortalEvent(event.id);void api.post('/api/events/'+encodeURIComponent(event.id)+'/room',{teamId:team.id,accessToken:teamTokens[team.id]}).then(r=>{setRoom(r.data.room);flash('Your event room details are ready.');}).catch((e:any)=>flash(e?.response?.data?.error||'Room details are not available yet.'));}}>View room details</button>
+                    <div><b><ShieldCheck size={15}/> Custom Room ID & Password</b><small>{!event.roomPublished?'Waiting for the organiser to publish the room credentials.':event.matchSchedule?.length?('Room credentials unlock '+(event.roomReleaseMinutes??0)+' minutes before your scheduled match. First match: '+new Date(event.matchSchedule[0].startsAt).toLocaleString()+'.'):'Room credentials are published. Your match schedule is being prepared.'}</small></div>
+                    <button className="primary tiny" disabled={!event.roomPublished||!teamTokens[team.id]} onClick={()=>{setActiveId(event.id);setTeamPortalEvent(event.id);void api.post('/api/events/'+encodeURIComponent(event.id)+'/room',{teamId:team.id,accessToken:teamTokens[team.id]}).then(r=>{setRoom(r.data.room);flash('Your event room details are ready.');}).catch((e:any)=>flash(e?.response?.data?.error||'Room details are not available yet.'));}}>{!teamTokens[team.id]?'Private access needed':event.roomPublished?'Check room access':'Waiting for room details'}</button>
                   </div>}
                 </div>)}
               </div>
