@@ -60,7 +60,9 @@ const runCleanup=async()=>{
   cleanupRunning=true;
   try {
     const removed=await cleanupCompletedEvents();
+    const stale=await cleanupInactiveSquads();
     if(removed) console.log(`Archived and cleaned ${removed} completed event(s)`);
+    if(stale) console.log(`Removed ${stale} inactive squad(s)`);
   } catch(error) {
     console.error('Completed-event cleanup failed:',error instanceof Error?error.message:'Unknown error');
   } finally {
