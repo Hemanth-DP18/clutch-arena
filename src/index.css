@@ -565,3 +565,8 @@ footer{font-size:9px;padding-top:26px;padding-bottom:26px}
 .team-code-modal .modal-note{line-height:1.6}
 .created-squad-card .registered-events-section{margin-top:8px}
 @media(max-width:520px){.created-squad-code{align-items:flex-start;flex-direction:column}.generated-team-code{font-size:23px;letter-spacing:2px}}
+
+
+/* Individual player accounts and solo competition format */
+.player-profile-chip{border:1px solid #a78bfa55;border-radius:999px;padding:7px 11px;color:#d8caff;background:#9b7bff12}
+.modal .choice{display:flex;gap:8px}.modal .choice button{flex:1;border:1px solid #ffffff20;background:#111729;color:#d9d3ed}.modal .choice button.chosen{border-color:#a78bfa;background:#35265c;color:#fff}
