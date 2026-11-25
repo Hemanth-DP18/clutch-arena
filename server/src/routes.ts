@@ -130,8 +130,18 @@ router.post('/players/login',async(req,res)=>{
   if(!row||password.length>128)return bad(res,'Username or password is incorrect.',401);
   const supplied=Buffer.from(makePasswordHash(password,row.password_salt),'hex');const expected=Buffer.from(row.password_hash,'hex');
   if(supplied.length!==expected.length||!timingSafeEqual(supplied,expected))return bad(res,'Username or password is incorrect.',401);
-  const token=randomBytes(32).toString('hex');await pool.query('UPDATE ca_players SET token_hash=$2,updated_at=now() WHERE id=$1',[row.id,digest(token)]);
-  res.json({token,profile:{id:row.id,username:row.username,...row.profile}});
+  const token=randomBytes(32).toString('hex');
+  const profile={...row.profile};
+  if(!profile.caid){
+    for(let attempt=0;attempt<8;attempt++){
+      const candidate='CAID-'+randomBytes(4).toString('hex').toUpperCase();
+      const exists=await pool.query("SELECT 1 FROM ca_players WHERE upper(profile->>'caid')=$1 LIMIT 1",[candidate]);
+      if(!exists.rowCount){profile.caid=candidate;break;}
+    }
+    if(!profile.caid)return bad(res,'Could not assign a Clutch Arena ID. Please try again.',503);
+  }
+  await pool.query('UPDATE ca_players SET token_hash=$2,profile=$3::jsonb,updated_at=now() WHERE id=$1',[row.id,digest(token),JSON.stringify(profile)]);
+  res.json({token,profile:{id:row.id,username:row.username,...profile}});
 });
 router.get('/players/me',async(req,res)=>{const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));if(!player)return bad(res,'Please sign in again.',401);res.json({profile:player});});
 router.get('/players/notifications',async(req,res)=>{const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));if(!player)return bad(res,'Sign in to view reports.',401);const rows=await pool.query('SELECT id,data FROM ca_notifications WHERE player_id=$1 ORDER BY created_at DESC LIMIT 50',[player.id]);res.json({notifications:rows.rows.map(row=>({id:row.id,...row.data}))});});
