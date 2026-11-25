@@ -1,14 +1,21 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { pool } from './db.js';
 
 type MatchSlot = { id:string; match:number; group:string; startsAt:string; label:string; status:'Scheduled'|'Delayed'|'Cancelled'|'Completed'; delayReason?:string; updatedAt?:string };
-type Team = { id:string; eventId:string; name:string; captain:string; roster:{name:string;uid:string}[]; slot:number; group?:string; createdAt:string; results:{placement:number;kills:number;confirmed:boolean}[]; accessHash:string };
+type Squad = { id:string; name:string; roster:{name:string;uid:string}[]; createdAt:string; accessHash:string; codeHash:string };
+type Team = { id:string; squadId?:string; eventId:string; name:string; captain:string; roster:{name:string;uid:string}[]; slot:number; group?:string; createdAt:string; results:{placement:number;kills:number;confirmed:boolean}[]; accessHash:string };
 type Event = { id:string; name:string; game:string; type:'Tournament'|'Scrim'; mode:string; matches:number; groups:number; teamLimit:number; status:string; stage:string; createdAt:string; completedAt?:string; organizerHash:string; roomReleaseMinutes?:number; roomId?:string; roomPassword?:string; registrationOpensAt?:string; registrationClosesAt?:string; autoScheduleStartAt?:string; matchIntervalMinutes?:number; matchSchedule?:MatchSlot[] };
 const router = Router();
 const digest = (value:string) => createHash('sha256').update(value).digest('hex');
 const bad = (res:Response,message:string,status=400) => res.status(status).json({error:message});
 const safeEvent = (event:Event) => { const {organizerHash,roomId,roomPassword,...visible}=event; return visible; };
+const getSquad = async (id:string):Promise<Squad|undefined> => {
+  const result=await pool.query('SELECT id,data,code_hash FROM ca_squads WHERE id=$1',[id]);
+  return result.rows[0] ? {id:result.rows[0].id,...result.rows[0].data,codeHash:result.rows[0].code_hash} as Squad : undefined;
+};
+const requireSquad = (squad:Squad|undefined,token:unknown) => Boolean(squad && typeof token==='string' && token.length>0 && digest(token)===squad.accessHash);
+const validRoster = (value:unknown):value is {name:string;uid:string}[] => Array.isArray(value) && value.length>=4 && value.length<=5 && value.every((p:any)=>typeof p?.name==='string'&&p.name.trim().length>=2&&p.name.trim().length<=30&&typeof p?.uid==='string'&&/^\d{5,20}$/.test(p.uid.trim())) && new Set(value.map((p:any)=>p.uid.trim())).size===value.length;
 const getEvent = async (id:string):Promise<Event|undefined> => {
   const result=await pool.query('SELECT id,data FROM ca_events WHERE id=$1',[id]);
   return result.rows[0] ? {id:result.rows[0].id,...result.rows[0].data} as Event : undefined;
@@ -125,6 +132,57 @@ router.post('/events/:id/teams',async(req,res)=>{
   const team:Team={id:randomUUID(),eventId:event.id,name:input.name.trim().slice(0,60),captain:String(roster[0].name).trim(),roster:roster.map((p:any)=>({name:String(p.name).trim(),uid:String(p.uid).trim()})),slot,group:event.type==='Tournament'?`Group ${String.fromCharCode(65+Math.floor(teams.length/12))}`:undefined,createdAt:new Date().toISOString(),results:Array.from({length:event.matches},()=>({placement:0,kills:0,confirmed:false})),accessHash:digest(input.accessToken)};
   await pool.query('INSERT INTO ca_teams(id,event_id,data) VALUES($1,$2,$3::jsonb)',[team.id,event.id,JSON.stringify(team)]);
   res.status(201).json({team:{id:team.id}});
+});
+
+// A squad is created independently of any event. Its invite code is only returned once.
+router.post('/teams',async(req,res)=>{
+  const input=req.body||{};
+  if(typeof input.name!=='string'||input.name.trim().length<2||input.name.trim().length>40||!validRoster(input.players)||typeof input.accessToken!=='string'||input.accessToken.length<32) return bad(res,'Enter a team name and 4–5 players with unique numeric player UIDs (5–20 digits).');
+  const accessHash=digest(input.accessToken);
+  const id=randomUUID();
+  const code='CA-'+randomBytes(4).toString('hex').toUpperCase();
+  const codeHash=digest(code);
+  const squad:Squad={id,name:input.name.trim(),roster:input.players.map(p=>({name:p.name.trim(),uid:p.uid.trim()})),createdAt:new Date().toISOString(),accessHash,codeHash};
+  try {
+    await pool.query('INSERT INTO ca_squads(id,code_hash,data) VALUES($1,$2,$3::jsonb)',[id,codeHash,JSON.stringify({name:squad.name,roster:squad.roster,createdAt:squad.createdAt,accessHash})]);
+  } catch(error:any) {
+    if(error?.code==='23505') return bad(res,'Please generate your team again; the invite code collided.',409);
+    throw error;
+  }
+  res.status(201).json({squad:{id,name:squad.name,roster:squad.roster,createdAt:squad.createdAt},teamCode:code});
+});
+
+router.get('/teams/:id',async(req,res)=>{
+  const squad=await getSquad(req.params.id);
+  if(!requireSquad(squad,req.header('x-team-access'))) return bad(res,'Team access denied',403);
+  const registrations=await pool.query("SELECT id,event_id,data FROM ca_teams WHERE data->>'squadId'=$1 ORDER BY created_at DESC",[squad!.id]);
+  res.json({squad:{id:squad!.id,name:squad!.name,roster:squad!.roster,createdAt:squad!.createdAt},registrations:registrations.rows.map(row=>({id:row.id,eventId:row.event_id,name:row.data.name,slot:row.data.slot,group:row.data.group}))});
+});
+
+router.post('/events/:id/teams/register-code',async(req,res)=>{
+  const event=await getEvent(req.params.id);const input=req.body||{};
+  if(!event) return bad(res,'Event not found',404);
+  const code=typeof input.teamCode==='string'?input.teamCode.trim().toUpperCase().replace(/\s+/g,''):'';
+  const captainUid=typeof input.captainUid==='string'?input.captainUid.trim():'';
+  if(!/^CA-[A-F0-9]{8}$/.test(code)||!/^\d{5,20}$/.test(captainUid)) return bad(res,'Enter a valid team code and captain UID.');
+  const found=await pool.query('SELECT id,data,code_hash FROM ca_squads WHERE code_hash=$1',[digest(code)]);
+  if(!found.rows[0]) return bad(res,'Team code not found. Check the code and try again.',404);
+  const squad={id:found.rows[0].id,...found.rows[0].data,codeHash:found.rows[0].code_hash} as Squad;
+  if(squad.roster[0]?.uid!==captainUid) return bad(res,'Captain UID verification failed. Only the registered captain UID can confirm this squad.',403);
+  if(!validRoster(squad.roster)) return bad(res,'This squad roster needs to be corrected before registration.');
+  const teams=await getTeams(event.id);
+  const current=statusFor(event,teams.length);
+  if(current!=='Registration open') return bad(res,current==='Registration scheduled'?'Registration has not opened yet':'Registration is closed',409);
+  if(event.teamLimit>0&&teams.length>=event.teamLimit) return bad(res,'This event has reached its team registration limit',409);
+  if(teams.some(t=>t.squadId===squad.id)) return bad(res,'This squad is already registered for this event.',409);
+  if(teams.some(t=>t.name.toLowerCase()===squad.name.toLowerCase())) return bad(res,'A team with this name is already registered for this event.',409);
+  const playerUids=new Set(squad.roster.map(p=>p.uid));
+  if(teams.some(t=>t.roster.some(p=>playerUids.has(p.uid)))) return bad(res,'One or more players are already registered with another team in this event.',409);
+  const slot=teams.length+1;
+  const accessToken=randomBytes(32).toString('hex');
+  const team:Team={id:randomUUID(),squadId:squad.id,eventId:event.id,name:squad.name,captain:squad.roster[0].name,roster:squad.roster,slot,group:event.type==='Tournament'?'Group '+String.fromCharCode(65+Math.floor(teams.length/12)):undefined,createdAt:new Date().toISOString(),results:Array.from({length:event.matches},()=>({placement:0,kills:0,confirmed:false})),accessHash:digest(accessToken)};
+  await pool.query('INSERT INTO ca_teams(id,event_id,data) VALUES($1,$2,$3::jsonb)',[team.id,event.id,JSON.stringify(team)]);
+  res.status(201).json({team:{id:team.id,squadId:squad.id,name:team.name,eventId:event.id},accessToken});
 });
 
 router.post('/events/:id/organizer-room',async(req,res)=>{
