@@ -443,3 +443,22 @@ footer{font-size:9px;padding-top:26px;padding-bottom:26px}
 @media(prefers-reduced-motion:reduce){
  *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
+
+
+/* Dream team creation feature */
+.dream-team-banner{position:relative;isolation:isolate;overflow:hidden;display:grid;grid-template-columns:minmax(0,1.4fr) minmax(180px,.8fr);align-items:center;gap:22px;margin:22px 0 26px;padding:clamp(22px,4vw,38px);border:1px solid #9d7bff55;border-radius:22px;background:radial-gradient(ellipse at 82% 48%,#7545d944 0%,transparent 42%),linear-gradient(120deg,#17112b 0%,#21153b 54%,#171126 100%);box-shadow:0 18px 55px #09051155}
+.dream-team-banner:before{content:"";position:absolute;inset:0;z-index:-1;opacity:.16;background-image:linear-gradient(#bca8ff22 1px,transparent 1px),linear-gradient(90deg,#bca8ff22 1px,transparent 1px);background-size:28px 28px;mask-image:linear-gradient(90deg,#000,transparent 85%)}
+.dream-team-copy{max-width:650px}
+.dream-team-kicker{display:inline-flex;align-items:center;gap:8px;color:#c7b4ff;font-size:10px;font-weight:800;letter-spacing:2px}
+.dream-team-copy h2{margin:13px 0 8px;color:#fff;font-family:'Barlow Condensed',sans-serif;font-size:clamp(34px,5vw,58px);font-weight:900;line-height:.95;letter-spacing:.5px}
+.dream-team-copy h2 em{color:#b69aff;font-style:normal;text-shadow:0 0 28px #9c73ff55}
+.dream-team-copy p{max-width:520px;margin:12px 0 18px;color:#c8bfd9;font-size:13px;line-height:1.8}
+.dream-team-button{display:inline-flex;align-items:center;gap:9px;min-height:44px;padding:0 18px;font-weight:800}
+.dream-team-copy>small{display:block;margin-top:11px;color:#958aa9;font-size:10px}
+.dream-team-art{position:relative;display:grid;place-items:center;min-height:190px}
+.dream-emblem{z-index:2;display:grid;place-items:center;width:116px;height:116px;border:1px solid #c2a9ff88;border-radius:30px;color:#e5d9ff;background:linear-gradient(145deg,#9b72ed55,#3a246d99);box-shadow:0 0 0 12px #a88aff0b,0 0 55px #9567ff66;transform:rotate(-8deg)}
+.dream-orbit{position:absolute;width:170px;height:170px;border:1px solid #b99aff44;border-radius:50%;transform:rotate(-28deg) scaleY(.48)}
+.orbit-a{width:210px;height:210px;border-color:#b99aff66;transform:rotate(32deg) scaleY(.48)}
+.orbit-b{width:150px;height:150px;transform:rotate(-48deg) scaleY(.48)}
+.dream-art-label{position:absolute;bottom:2px;color:#a997c5;font-size:9px;font-weight:800;letter-spacing:3px}
+@media(max-width:680px){.dream-team-banner{grid-template-columns:1fr;gap:4px;padding:22px 18px;border-radius:17px}.dream-team-copy h2{font-size:42px}.dream-team-copy p{font-size:12px}.dream-team-art{min-height:135px}.dream-emblem{width:88px;height:88px;border-radius:23px}.dream-emblem svg{width:42px;height:42px}.dream-orbit{width:130px;height:130px}.orbit-a{width:165px;height:165px}.dream-art-label{bottom:0}}
