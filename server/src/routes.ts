@@ -96,7 +96,7 @@ router.get('/events',async(_req,res)=>{
     pool.query('SELECT data FROM ca_team_history ORDER BY created_at DESC')
   ]);
   const teamCounts=new Map<string,number>();
-  const publicTeams=teams.rows.map(row=>{teamCounts.set(row.event_id,(teamCounts.get(row.event_id)||0)+1);const {accessHash,...data}=row.data;return {id:row.id,...data};});
+  const publicTeams=teams.rows.map(row=>{teamCounts.set(row.event_id,(teamCounts.get(row.event_id)||0)+1);const {accessHash,...data}=row.data;return {id:row.id,...data,roster:(data.roster||[]).map((p:any)=>({name:p.name}))};});
   res.json({events:events.rows.map(row=>{const event={id:row.id,...row.data} as Event;return {...safeEvent(event),roomPublished:Boolean(event.roomId&&event.roomPassword),status:statusFor(event,teamCounts.get(row.id)||0)};}),teams:publicTeams,history:history.rows.map(row=>row.data)});
 });
 
@@ -115,7 +115,7 @@ router.get('/events/:id',async(req,res)=>{
   if(!event) return bad(res,'Event not found',404);
   const teams=await getTeams(event.id);
   const updated=await makeSchedule(event,teams);
-  res.json({event:{...safeEvent(updated),roomPublished:Boolean(updated.roomId&&updated.roomPassword),status:statusFor(updated,teams.length)},teams:teams.map(({accessHash,...t})=>t)});
+  res.json({event:{...safeEvent(updated),roomPublished:Boolean(updated.roomId&&updated.roomPassword),status:statusFor(updated,teams.length)},teams:teams.map(({accessHash,...t})=>({...t,roster:t.roster.map(p=>({name:p.name}))}))});
 });
 
 router.post('/events/:id/teams',async(req,res)=>{
