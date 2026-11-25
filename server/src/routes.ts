@@ -162,9 +162,13 @@ router.post('/events/:id/teams',async(req,res)=>{
   if(current!=='Registration open') return bad(res,current==='Registration scheduled'?'Registration has not opened yet':'Registration is closed',409);
   const roster=Array.isArray(input.players)?input.players:[];
   if(event.format==='Solo') return bad(res,'This is a solo event. Register with an individual player profile.',409);
-  if(typeof input.name!=='string'||!input.name.trim()||roster.length!==4||roster.some((p:any)=>!p.name?.trim()||!p.uid?.trim())||typeof input.accessToken!=='string'||!input.accessToken) return bad(res,'A team name and four valid players are required');
+  const validPlayers=roster.length>=4&&roster.length<=5&&roster.every((p:any)=>typeof p?.name==='string'&&p.name.trim().length>=2&&p.name.trim().length<=30&&validPlayerUid(typeof p?.uid==='string'?p.uid.trim():null));
+  const playerUids=roster.map((p:any)=>String(p.uid).trim());
+  if(typeof input.name!=='string'||input.name.trim().length<2||input.name.trim().length>40||!validPlayers||new Set(playerUids).size!==playerUids.length||typeof input.accessToken!=='string'||input.accessToken.length<32) return bad(res,'Enter a team name and 4–5 players with unique numeric UIDs (5–20 digits).');
   if(event.teamLimit>0&&teams.length>=event.teamLimit) return bad(res,'This event has reached its team registration limit',409);
   if(teams.some(t=>t.name.toLowerCase()===input.name.trim().toLowerCase())) return bad(res,'That team name is already registered',409);
+  const uidSet=new Set(playerUids);
+  if(teams.some(t=>(t.roster||[]).some(p=>uidSet.has(p.uid)))) return bad(res,'One or more players are already registered with another team in this event.',409);
   const slot=teams.length+1;
   const team:Team={id:randomUUID(),eventId:event.id,name:input.name.trim().slice(0,60),captain:String(roster[0].name).trim(),roster:roster.map((p:any)=>({name:String(p.name).trim(),uid:String(p.uid).trim()})),slot,group:event.type==='Tournament'?`Group ${String.fromCharCode(65+Math.floor(teams.length/12))}`:undefined,createdAt:new Date().toISOString(),results:Array.from({length:event.matches},()=>({placement:0,kills:0,confirmed:false})),accessHash:digest(input.accessToken)};
   await pool.query('INSERT INTO ca_teams(id,event_id,data) VALUES($1,$2,$3::jsonb)',[team.id,event.id,JSON.stringify(team)]);
