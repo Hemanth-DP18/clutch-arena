@@ -553,3 +553,15 @@ footer{font-size:9px;padding-top:26px;padding-bottom:26px}
 .registered-match-row .schedule-status{flex-shrink:0}
 .registered-match-empty{display:block;padding:8px 2px;color:#9ca5bb;font-size:9px;line-height:1.6}
 @media(max-width:600px){.team-player-performance{padding:11px}.team-player-performance .team-performance{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.team-player-performance .team-performance>div{padding:11px}.team-player-performance .team-performance b{font-size:19px}.registered-match-row{align-items:flex-start}}
+
+/* Permanent squads and secure event-code registration */
+.created-squad-card{position:relative;overflow:hidden}
+.created-squad-card:before{content:"";position:absolute;inset:0 0 auto;height:2px;background:linear-gradient(90deg,#8d68ff,#d2a8ff,transparent)}
+.created-squad-code{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:4px 0 18px;padding:13px 15px;border:1px solid #9a7bff38;border-radius:12px;background:linear-gradient(110deg,#211b38,#111a2a)}
+.created-squad-code span{display:grid;gap:5px;min-width:0}
+.created-squad-code small{color:#9f93bf;font-size:8px;font-weight:800;letter-spacing:1px}
+.created-squad-code b{color:#e6d9ff;font-size:17px;letter-spacing:1.8px;font-variant-numeric:tabular-nums}
+.generated-team-code{margin:18px 0;padding:18px 12px;border:1px dashed #a68aff80;border-radius:12px;background:#151329;color:#e9ddff;text-align:center;font-size:27px;font-weight:900;letter-spacing:3px;font-variant-numeric:tabular-nums}
+.team-code-modal .modal-note{line-height:1.6}
+.created-squad-card .registered-events-section{margin-top:8px}
+@media(max-width:520px){.created-squad-code{align-items:flex-start;flex-direction:column}.generated-team-code{font-size:23px;letter-spacing:2px}}
