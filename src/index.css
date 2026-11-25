@@ -504,3 +504,23 @@ footer{font-size:9px;padding-top:26px;padding-bottom:26px}
 .tab-manage .detail-panel{max-width:none}
 .team-portal{display:none!important}
 @media(max-width:600px){.workspace-event-picker .event-list{grid-template-columns:1fr}.tab-manage .detail-panel{padding:13px}}
+
+/* Focused team dashboard: player roster and registered event access */
+.team-roster-simple{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;padding:18px 0}
+.team-player-row{display:flex;align-items:center;gap:11px;padding:12px;border:1px solid #a48aff24;border-radius:11px;background:linear-gradient(145deg,#171c30,#0d1321)}
+.player-number{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:#8d70ef25;color:#c9b8ff;font-weight:900}
+.team-player-row b,.team-player-row small{display:block}
+.team-player-row b{color:#f3f1ff;font-size:12px}
+.team-player-row small{margin-top:3px;color:#9ca5bb;font-size:8px;letter-spacing:1px}
+.registered-events-section{margin-top:8px}
+.registered-event-card{margin-top:10px;padding:14px;border:1px solid #a48aff24;border-radius:12px;background:#0c1220}
+.registered-event-info{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.registered-event-info b,.registered-event-info small{display:block}
+.registered-event-info b{color:#fff;font-size:13px;overflow-wrap:anywhere}
+.registered-event-info small{margin-top:5px;color:#aab2c6;font-size:10px;line-height:1.5}
+.registered-room-access{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:13px;padding:12px;border:1px solid #7355b955;border-radius:10px;background:linear-gradient(110deg,#201938,#14172a)}
+.registered-room-access>div{min-width:0}
+.registered-room-access b{display:flex;align-items:center;gap:7px;color:#d7caff;font-size:11px}
+.registered-room-access small{display:block;margin-top:5px;color:#aaa2c4;font-size:9px;line-height:1.6}
+.registered-room-access button{flex-shrink:0}
+@media(max-width:600px){.team-roster-simple{grid-template-columns:1fr}.registered-event-info{gap:7px}.registered-event-info .status{white-space:nowrap}.registered-room-access{align-items:stretch;flex-direction:column}.registered-room-access button{width:100%}}
