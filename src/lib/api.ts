@@ -19,7 +19,7 @@ async function request<T>(method:string,path:string,body?:unknown,extraHeaders?:
 }
 export const api={
   get:<T=any>(path:string,headers?:Record<string,string>)=>request<T>('GET',path,undefined,headers),
-  post:<T=any>(path:string,body?:unknown)=>request<T>('POST',path,body),
+  post:<T=any>(path:string,body?:unknown,headers?:Record<string,string>)=>request<T>('POST',path,body,headers),
   put:<T=any>(path:string,body?:unknown)=>request<T>('PUT',path,body),
   delete:<T=any>(path:string,body?:unknown)=>request<T>('DELETE',path,body)
 };
