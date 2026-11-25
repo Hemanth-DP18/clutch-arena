@@ -615,3 +615,5 @@ button:focus-visible,a:focus-visible{outline:2px solid #c4b5fd;outline-offset:3p
  .hero-cup,.ring-one,.ring-two,.live-dot,.dream-emblem,.dream-orbit,.status:not(.done){animation:none!important}
  .panel,.event-row,.hosted-event-row,.registered-event-card,.created-squad-card,.team-dashboard-card,.feature-grid>div,.primary,.outline,.dream-team-button,.top nav button,.choice button{transition:none!important}
 }
+
+@media print{body *{visibility:hidden!important}.report-print-area,.report-print-area *{visibility:visible!important}.report-print-area{position:absolute!important;left:0!important;top:0!important;width:100%!important;background:#fff!important;color:#111!important;box-shadow:none!important;border:0!important}.report-print-area table{width:100%!important;border-collapse:collapse!important}.report-print-area th,.report-print-area td{color:#111!important;border:1px solid #bbb!important;padding:8px!important}.report-print-area button{display:none!important}}
