@@ -220,7 +220,7 @@ export default function App() {
     if(!active)return flash('Choose an event first.');
     if(!/^CA-[A-Fa-f0-9]{8}$/.test(registrationCode.trim())||!/^\d{5,20}$/.test(captainUid.trim()))return flash('Enter your team code and captain UID.');
     try{
-      const response=await api.post('/api/events/'+encodeURIComponent(active.id)+'/teams/register-code',{teamCode:registrationCode.trim(),captainUid:captainUid.trim()});
+      const response=await api.post('/api/events/'+encodeURIComponent(active.id)+'/teams/register-code',{teamCode:registrationCode.trim(),captainUid:captainUid.trim()},{Authorization:'Bearer '+playerToken});
       const accessToken=response.data.accessToken as string;
       setTeamTokens(v=>({...v,[response.data.team.id]:accessToken}));
       setRegistrationCode('');setCaptainUid('');setShowJoin(false);await refresh(active.id);
