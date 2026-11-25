@@ -5,7 +5,7 @@ import { pool } from './db.js';
 type MatchSlot = { id:string; match:number; group:string; startsAt:string; label:string; status:'Scheduled'|'Delayed'|'Cancelled'|'Completed'; delayReason?:string; updatedAt?:string };
 type Squad = { id:string; name:string; roster:{name:string;uid:string}[]; createdAt:string; accessHash:string; codeHash:string };
 type Team = { id:string; squadId?:string; eventId:string; name:string; captain:string; roster:{name:string;uid:string}[]; slot:number; group?:string; createdAt:string; results:{placement:number;kills:number;confirmed:boolean}[]; accessHash:string };
-type Event = { id:string; name:string; game:string; type:'Tournament'|'Scrim'; format?:'Solo'|'Squad'; mode:string; matches:number; groups:number; teamLimit:number; status:string; stage:string; createdAt:string; completedAt?:string; organizerHash:string; roomReleaseMinutes?:number; roomId?:string; roomPassword?:string; registrationOpensAt?:string; registrationClosesAt?:string; autoScheduleStartAt?:string; matchIntervalMinutes?:number; matchSchedule?:MatchSlot[] };
+type Event = { id:string; name:string; game:string; type:'Tournament'|'Scrim'; format?:'Solo'|'Squad'; mode:string; matches:number; groups:number; teamLimit:number; status:string; stage:string; createdAt:string; completedAt?:string; organizerHash:string; organizerPlayerId?:string; roomReleaseMinutes?:number; roomId?:string; roomPassword?:string; registrationOpensAt?:string; registrationClosesAt?:string; autoScheduleStartAt?:string; matchIntervalMinutes?:number; matchSchedule?:MatchSlot[] };
 const router = Router();
 const digest = (value:string) => createHash('sha256').update(value).digest('hex');
 const makePasswordHash=(password:string,salt:string)=>scryptSync(password,salt,64).toString('hex');
@@ -138,7 +138,8 @@ router.post('/events/:id/players/register',async(req,res)=>{
   res.status(201).json({entrant:{id:entrant.id,eventId:event.id,name:entrant.name,slot:entrant.slot,group:entrant.group},accessToken});
 });
 
-router.get('/events',async(req,res)=>{\n  const viewer=await playerFromToken(req.header('authorization')?.replace(/^Bearer\\s+/i,''));if(!viewer)return bad(res,'Sign in to view events.',401);
+router.get('/events',async(req,res)=>{
+  const viewer=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));if(!viewer)return bad(res,'Sign in to view events.',401);
   const [events,teams,history]=await Promise.all([
     pool.query('SELECT id,data FROM ca_events ORDER BY created_at DESC'),
     pool.query('SELECT id,event_id,data FROM ca_teams ORDER BY created_at'),
@@ -155,7 +156,9 @@ router.post('/events',async(req,res)=>{
   const matches=Math.max(1,Math.min(30,Number(input.matches)||1));
   const groups=input.type==='Tournament'?Math.max(1,Math.min(26,Math.floor(Number(input.groups)||1))):0;
   const format=input.format==='Solo'?'Solo':'Squad';
-  const host=await playerFromToken(req.header('authorization')?.replace(/^Bearer\\s+/i,''));\n  if(!host)return bad(res,'Sign in before creating an event.',401);\n  const event:Event={id:randomUUID(),organizerPlayerId:host.id,name:input.name.trim().slice(0,100),game:input.game,type:input.type,format,mode:input.mode==='Clash Squad'?'Clash Squad':'Battle Royale',matches,groups,teamLimit:input.type==='Tournament'?groups*12:Math.max(0,Math.min(10000,Math.floor(Number(input.teamLimit)||0))),status:'Registration open',stage:'Open Qualifier',createdAt:new Date().toISOString(),organizerHash:digest(input.organizerToken)};
+  const host=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));
+  if(!host)return bad(res,'Sign in before creating an event.',401);
+  const event:Event={id:randomUUID(),organizerPlayerId:host.id,name:input.name.trim().slice(0,100),game:input.game,type:input.type,format,mode:input.mode==='Clash Squad'?'Clash Squad':'Battle Royale',matches,groups,teamLimit:input.type==='Tournament'?groups*12:Math.max(0,Math.min(10000,Math.floor(Number(input.teamLimit)||0))),status:'Registration open',stage:'Open Qualifier',createdAt:new Date().toISOString(),organizerHash:digest(input.organizerToken)};
   await pool.query('INSERT INTO ca_events(id,data) VALUES($1,$2::jsonb)',[event.id,JSON.stringify(event)]);
   res.status(201).json({event:safeEvent(event)});
 });
@@ -192,13 +195,13 @@ router.post('/events/:id/teams',async(req,res)=>{
 // A squad is created independently of any event. Its invite code is only returned once.
 // Player-owned permanent squads. The captain creates the squad from their signed-in profile.
 router.get('/players/teams',async(req,res)=>{
-  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\\s+/i,''));
+  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));
   if(!player)return bad(res,'Sign in to view your teams.',401);
   const result=await pool.query("SELECT id,data FROM ca_squads WHERE data->>'ownerId'=$1 OR data @> $2::jsonb ORDER BY created_at DESC",[player.id,JSON.stringify({roster:[{playerId:player.id}]})]);
   res.json({squads:result.rows.map(row=>({id:row.id,name:row.data.name,roster:row.data.roster,createdAt:row.data.createdAt,role:row.data.ownerId===player.id?'Captain':'Player',inviteCode:row.data.ownerId===player.id?row.data.inviteCode||'':undefined}))});
 });
 router.post('/teams',async(req,res)=>{
-  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\\s+/i,''));
+  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));
   if(!player)return bad(res,'Sign in before creating a team.',401);
   const name=String(req.body?.name||'').trim();
   if(name.length<2||name.length>40)return bad(res,'Team name must be 2–40 characters.');
@@ -209,7 +212,7 @@ router.post('/teams',async(req,res)=>{
   res.status(201).json({squad:{id,name,roster,createdAt:data.createdAt,role:'Captain',inviteCode:code}});
 });
 router.post('/teams/:id/invite',async(req,res)=>{
-  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\\s+/i,''));
+  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));
   if(!player)return bad(res,'Sign in first.',401);
   const result=await pool.query('SELECT id,data FROM ca_squads WHERE id=$1',[req.params.id]);
   if(!result.rows[0])return bad(res,'Team not found.',404);
@@ -222,7 +225,7 @@ router.post('/teams/:id/invite',async(req,res)=>{
   res.json({inviteCode:code});
 });
 router.post('/teams/join',async(req,res)=>{
-  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\\s+/i,''));
+  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));
   if(!player)return bad(res,'Sign in before joining a team.',401);
   const code=String(req.body?.inviteCode||'').trim().toUpperCase().replace(/\\s+/g,'');
   if(!/^CA-[A-F0-9]{8}$/.test(code))return bad(res,'Enter a valid team invite code.');
