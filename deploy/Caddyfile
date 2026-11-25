@@ -1,0 +1,12 @@
+{$DOMAIN} {
+  encode zstd gzip
+
+  @api path /api/*
+  reverse_proxy @api api:4000
+
+  reverse_proxy web:80
+}
+
+www.{$DOMAIN} {
+  redir https://{$DOMAIN}{uri} permanent
+}
