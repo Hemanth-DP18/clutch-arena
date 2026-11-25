@@ -4,7 +4,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { checkDatabase, pool } from './db.js';
-import apiRoutes from './routes.js';
+import apiRoutes, { cleanupCompletedEvents } from './routes.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -53,7 +53,26 @@ const server = app.listen(port, () => {
   console.log(`Clutch Arena API listening on port ${port}`);
 });
 
+// Archive team results, then remove completed events 24 hours after completion.
+let cleanupRunning=false;
+const runCleanup=async()=>{
+  if(cleanupRunning) return;
+  cleanupRunning=true;
+  try {
+    const removed=await cleanupCompletedEvents();
+    if(removed) console.log(`Archived and cleaned ${removed} completed event(s)`);
+  } catch(error) {
+    console.error('Completed-event cleanup failed:',error instanceof Error?error.message:'Unknown error');
+  } finally {
+    cleanupRunning=false;
+  }
+};
+void runCleanup();
+const cleanupTimer=setInterval(()=>void runCleanup(),5*60*1000);
+
+
 async function shutdown() {
+  clearInterval(cleanupTimer);
   server.close();
   await pool.end();
   process.exit(0);
