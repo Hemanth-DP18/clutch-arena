@@ -1,0 +1,19 @@
+{
+  "name": "ClutchArena — Free Fire Esports Hub",
+  "short_name": "ClutchArena",
+  "description": "Discover Free Fire India and Free Fire MAX scrims, register teams, follow group match schedules and track tournament standings.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#080b14",
+  "theme_color": "#080b14",
+  "icons": [
+    {
+      "src": "/clutcharena-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
