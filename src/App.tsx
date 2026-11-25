@@ -7,7 +7,8 @@ type MatchSlot = { id:string; match:number; group:string; startsAt:string; label
 type RoomAccess = {roomId:string;roomPassword:string;schedule:MatchSlot[]};
 type EventItem = { id: string; completedAt?:string; roomPublished?: boolean; roomReleaseMinutes?: number; name: string; game: Game; type: 'Tournament' | 'Scrim'; mode: string; matches: number; status: string; stage: string; createdAt: string; groups?: number; teamLimit?: number; registrationOpensAt?: string; registrationClosesAt?: string; autoScheduleStartAt?:string; matchIntervalMinutes?:number; matchSchedule?: MatchSlot[]; roomId?: string; roomPassword?: string };
 type Player = { name: string; uid: string };
-type Team = { id: string; eventId: string; name: string; captain: string; roster: Player[]; slot: number; group?: string; createdAt?:string; results: { placement: number; kills: number; confirmed: boolean }[]; accessToken?: string };
+type Squad = {id:string;name:string;roster:Player[];createdAt:string};
+type Team = { id: string; squadId?:string; eventId: string; name: string; captain: string; roster: Player[]; slot: number; group?: string; createdAt?:string; results: { placement: number; kills: number; confirmed: boolean }[]; accessToken?: string };
 type TeamHistory = { id:string; teamId:string; teamName:string; captain:string; eventId:string; eventName:string; game:string; type:string; group?:string; slot:number; teamCreatedAt?:string; completedAt:string; results:{placement:number;kills:number;confirmed:boolean}[]; kills:number; booyahs:number; totalPoints:number };
 const points = [12,9,8,7,6,5,4,3,2,1,0,0];
 const score = (r: {placement:number;kills:number}) => (points[r.placement-1] || 0) + Math.max(0,r.kills || 0);
@@ -19,6 +20,15 @@ const localToIso = (value:string) => value ? new Date(value).toISOString() : '';
 export default function App() {
   const [events,setEvents] = useState<EventItem[]>([]);
   const [teams,setTeams] = useState<Team[]>([]);
+  const [squads,setSquads] = useState<Squad[]>([]);
+  const [squadTokens,setSquadTokens] = useState<Record<string,string>>(() => saved('ca-squad-access'));
+  const [showCreateSquad,setShowCreateSquad] = useState(false);
+  const [squadName,setSquadName] = useState('');
+  const [squadRoster,setSquadRoster] = useState('');
+  const [createdTeamCode,setCreatedTeamCode] = useState('');
+  const [showTeamCode,setShowTeamCode] = useState(false);
+  const [registrationCode,setRegistrationCode] = useState('');
+  const [captainUid,setCaptainUid] = useState('');
   const [teamHistory,setTeamHistory] = useState<TeamHistory[]>([]);
   const [activeId,setActiveId] = useState('');
   const [selectedSquadId,setSelectedSquadId] = useState('');
@@ -138,6 +148,8 @@ export default function App() {
   }, []);
   useEffect(() => { localStorage.setItem('ca-organizer-links',JSON.stringify(organizerTokens)); },[organizerTokens]);
   useEffect(() => { localStorage.setItem('ca-team-access',JSON.stringify(teamTokens)); },[teamTokens]);
+  useEffect(() => { localStorage.setItem('ca-squad-access',JSON.stringify(squadTokens)); },[squadTokens]);
+  useEffect(() => { let cancelled=false; const load=async()=>{const entries=Object.entries(squadTokens);const results=await Promise.all(entries.map(async([id,key])=>{try{const response=await api.get('/api/teams/'+encodeURIComponent(id),{'x-team-access':key});return response.data.squad as Squad;}catch{return null;}}));if(!cancelled)setSquads(results.filter(Boolean) as Squad[]);};void load();return()=>{cancelled=true;}; },[squadTokens]);
   useEffect(() => { const timer=window.setInterval(()=>{ if(activeId) void refresh(activeId); },60000); return ()=>window.clearInterval(timer); },[activeId]);
   useEffect(() => { if (!active) return; setRegistrationOpensAt(toLocalInput(active.registrationOpensAt)); setRegistrationClosesAt(toLocalInput(active.registrationClosesAt)); setManageGroups(active.groups||1); setManageTeamLimit(active.teamLimit||0); setAutoScheduleStartAt(toLocalInput(active.autoScheduleStartAt)); setMatchIntervalMinutes(active.matchIntervalMinutes||30); setSelectedScheduleId(active.matchSchedule?.[0]?.id||''); },[active?.id]);
   useEffect(() => {
@@ -162,21 +174,26 @@ export default function App() {
       await navigator.clipboard?.writeText(link).catch(()=>{});
     } catch(e:any) { flash(e?.response?.data?.error || 'Event could not be created.'); }
   };
+  const createSquad = async () => {
+    const players=squadRoster.split(/\r?\n|,/).map(x=>x.trim()).filter(Boolean).map(line=>{const i=line.indexOf(':');return {name:i<0?'':line.slice(0,i).trim(),uid:i<0?'':line.slice(i+1).trim()};});
+    if(!squadName.trim()||squadName.trim().length<2||players.length<4||players.length>5||players.some(p=>!p.name||p.name.length<2||!/^\d{5,20}$/.test(p.uid))||new Set(players.map(p=>p.uid)).size!==players.length)return flash('Enter a team name and 4–5 players as Name:Player UID. UIDs must be 5–20 digits and unique.');
+    const accessToken=token();
+    try{const response=await api.post('/api/teams',{name:squadName.trim(),players,accessToken});setSquadTokens(v=>({...v,[response.data.squad.id]:accessToken}));setSquads(v=>[...v.filter(s=>s.id!==response.data.squad.id),response.data.squad]);setCreatedTeamCode(response.data.teamCode);setShowCreateSquad(false);setShowTeamCode(true);setSquadName('');setSquadRoster('');flash('Your team has been created. Save its invite code securely.');}
+    catch(e:any){flash(e?.response?.data?.error||'Team could not be created.');}
+  };
   const registerTeam = async () => {
-    if (!active) return flash('Choose an event first.');
-    const players = roster.split(/\r?\n|,/).map(x=>x.trim()).filter(Boolean).map(line=>{const i=line.indexOf(':');return {name:i<0?'':line.slice(0,i).trim(),uid:i<0?'':line.slice(i+1).trim()};});
-    if (!teamName.trim() || players.length !== 4 || players.some(p=>!p.name||!p.uid)) return flash('Enter a team name and four players as Name:UID.');
-    const accessToken = token();
-    try {
-      const r = await api.post('/api/events/'+encodeURIComponent(active.id)+'/teams',{name:teamName.trim(),players,accessToken});
-      setTeamTokens(v=>({...v,[r.data.team.id]:accessToken}));
-      setTeamName('');setRoster('');setShowJoin(false);await refresh(active.id);
-      location.hash = `team=${r.data.team.id}&key=${accessToken}`;
-      setTab('Team');setTeamPortalEvent(active.id);
-      const teamLink=location.origin+location.pathname+'#team='+r.data.team.id+'&key='+accessToken;
+    if(!active)return flash('Choose an event first.');
+    if(!/^CA-[A-Fa-f0-9]{8}$/.test(registrationCode.trim())||!/^\d{5,20}$/.test(captainUid.trim()))return flash('Enter your team code and captain UID.');
+    try{
+      const response=await api.post('/api/events/'+encodeURIComponent(active.id)+'/teams/register-code',{teamCode:registrationCode.trim(),captainUid:captainUid.trim()});
+      const accessToken=response.data.accessToken as string;
+      setTeamTokens(v=>({...v,[response.data.team.id]:accessToken}));
+      setRegistrationCode('');setCaptainUid('');setShowJoin(false);await refresh(active.id);
+      location.hash=`team=${response.data.team.id}&key=${accessToken}`;setTab('Team');setTeamPortalEvent(active.id);
+      const teamLink=location.origin+location.pathname+'#team='+response.data.team.id+'&key='+accessToken;
       await navigator.clipboard?.writeText(teamLink).catch(()=>{});
-      flash('Team registered! Your private team access link was copied. Save it to open the team portal on another device.');
-    } catch(e:any) { flash(e?.response?.data?.error || 'Registration failed.'); }
+      flash('Squad verified and registered! Your private event access link was copied.');
+    }catch(e:any){flash(e?.response?.data?.error||'Registration failed.');}
   };
   const saveRegistrationSettings = async () => {
     if (!active) return;
@@ -340,7 +357,7 @@ export default function App() {
     // The public Team directory lists every squad actually created through event registration.
     // Private access links are still required for room credentials and team-only actions.
     const ownedTeamIds=new Set(Object.keys(teamTokens));
-    const linked=teams.filter(team=>ownedTeamIds.has(team.id) && !!team.name?.trim() && Array.isArray(team.roster) && team.roster.length>0);
+    const linked=teams.filter(team=>!team.squadId && ownedTeamIds.has(team.id) && !!team.name?.trim() && Array.isArray(team.roster) && team.roster.length>0);
     const unique=new Map<string,Team>();
     linked.forEach(team=>{const key=team.name.trim().toLowerCase();if(!unique.has(key))unique.set(key,team);});
     return Array.from(unique.values()).map(team=>{
@@ -405,10 +422,10 @@ export default function App() {
         {tab==='Team'&&<section className="team-dashboard">
           <div className="team-portal-head"><div><div className="eyebrow">SQUAD COMMAND CENTRE</div><h2>My Team</h2><p>Create your squad, manage player details and view every event you have registered for.</p></div><div className="team-dashboard-actions"><button className="outline" onClick={()=>void refresh(activeId)}><RefreshCw size={14}/> Refresh</button><button className="outline" onClick={leaveTeamDashboard}>← Back to events</button></div></div>
           <section className="dream-team-banner">
-            <div className="dream-team-copy"><span className="dream-team-kicker"><Swords size={14}/> YOUR SQUAD. YOUR LEGACY.</span><h2>CREATE THE <em>DREAM TEAM</em></h2><p>Build your four-player squad and register it for the competitions you want to play.</p><label className="team-event-picker">Choose an event to join<select value={teamCreateEventId} onChange={e=>setTeamCreateEventId(e.target.value)}><option value="">Choose an open event…</option>{events.filter(event=>event.status==='Registration open').map(event=><option key={event.id} value={event.id}>{event.name} · {event.game} · {event.type}</option>)}</select></label><button className="primary dream-team-button" onClick={startTeamCreation}><Users size={16}/> Create your team <ArrowRight size={16}/></button><small>Your team will be registered for the selected event.</small></div>
+            <div className="dream-team-copy"><span className="dream-team-kicker"><Swords size={14}/> YOUR SQUAD. YOUR LEGACY.</span><h2>CREATE THE <em>DREAM TEAM</em></h2><p>Build your four-player squad and register it for the competitions you want to play.</p><button className="primary dream-team-button" onClick={()=>setShowCreateSquad(true)}><Users size={16}/> Create your team <ArrowRight size={16}/></button><small>Create your squad once, receive a unique team code, then use that code to enter events.</small></div>
             <div className="dream-team-art" aria-hidden="true"><div className="dream-orbit orbit-a"/><div className="dream-orbit orbit-b"/><div className="dream-emblem"><Trophy size={54}/></div><span className="dream-art-label">BUILT TO COMPETE</span></div>
           </section>
-          {linkedSquads.length>1&&<div className="panel squad-switcher"><label htmlFor="squad-switch">Select your team</label><select id="squad-switch" value={selectedSquadId} onChange={e=>setSelectedSquadId(e.target.value)}>{linkedSquads.map(squad=><option key={squad.team.id} value={squad.team.id}>{squad.team.name}</option>)}</select></div>}
+          {squads.map(squad=><article className="panel team-dashboard-card created-squad-card" key={squad.id}><div className="team-dashboard-title"><div><div className="eyebrow">CREATED SQUAD · PERMANENT TEAM</div><h3>{squad.name}</h3><p>Created {new Date(squad.createdAt).toLocaleDateString()}</p></div><span className="status">VERIFIED ROSTER</span></div><div className="team-roster team-roster-simple">{squad.roster.map((player,i)=><div className="team-player-row" key={i}><span className="player-number">{i+1}</span><div><b>{player.name}</b><small>{i===0?'CAPTAIN':'PLAYER '+(i+1)} · UID VERIFIED</small></div></div>)}</div><div className="team-history-section registered-events-section"><div className="team-schedule-head"><h4><CalendarDays size={16}/> Event registrations</h4><span>{teams.filter(t=>t.squadId===squad.id).length} EVENTS</span></div>{teams.filter(t=>t.squadId===squad.id).length===0?<div className="schedule-empty">This squad is created and ready. Open an event and enter its team code to register.</div>:teams.filter(t=>t.squadId===squad.id).map(t=>{const event=events.find(e=>e.id===t.eventId);return <div className="registered-event-card" key={t.id}><div className="registered-event-info"><div><b>{event?.name||'Event registration'}</b><small>{event?.game||''} · {event?.type||''}</small><small>{t.group||'Open group'} · Slot {t.slot}</small></div><span className="status">REGISTERED</span></div></div>;})}</div></article>)}{linkedSquads.length>1&&<div className="panel squad-switcher"><label htmlFor="squad-switch">Select your team</label><select id="squad-switch" value={selectedSquadId} onChange={e=>setSelectedSquadId(e.target.value)}>{linkedSquads.map(squad=><option key={squad.team.id} value={squad.team.id}>{squad.team.name}</option>)}</select></div>}
           {loading?<div className="panel team-empty">Loading your team details…</div>:linkedSquads.length===0?<div className="panel team-empty"><Users size={28}/><h3>No team created yet</h3><p>Create your team and register it for an event. Your team and player names will appear here.</p><button className="primary" onClick={startTeamCreation}>Create your team</button></div>:visibleSquads.map(squad=>{
             const registrations=[...squad.activeEvents.map(item=>({...item,completed:false})),...squad.completedEvents.map(item=>({...item,completed:true}))];
             return <article className="panel team-dashboard-card" key={squad.team.id}>
@@ -437,6 +454,6 @@ export default function App() {
     </main>
     <footer><span>CLUTCHARENA</span><span>Independent community platform · Not affiliated with Garena</span><span>Play fair. Compete hard.</span></footer>
     {showCreate&&<div className="modal-bg" onClick={()=>setShowCreate(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><div className="eyebrow">CREATE A COMPETITION</div><h2>Host your event</h2></div><button className="close" onClick={()=>setShowCreate(false)}><X/></button></div><label>Event name<input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Friday Night Pro Scrims"/></label><label>Game<select value={game} onChange={e=>setGame(e.target.value as Game)}><option>Free Fire India</option><option>Free Fire MAX</option></select></label><label>Event type<div className="choice"><button className={type==='Scrim'?'chosen':''} onClick={()=>setType('Scrim')}><Swords/> Scrim</button><button className={type==='Tournament'?'chosen':''} onClick={()=>setType('Tournament')}><Trophy/> Tournament</button></div></label><div className="modal-note"><ShieldCheck size={16}/> All ClutchArena tournaments and scrims are free to join. No entry fees or cash-prize tracking.</div><label>Mode<select value={mode} onChange={e=>setMode(e.target.value)}><option>Battle Royale</option><option>Clash Squad</option></select></label><label>Number of matches<input type="number" min="1" max="30" value={matches} onChange={e=>setMatches(Math.max(1,Math.min(30,Number(e.target.value))))}/></label>{type==='Tournament'?<label>Number of groups (12 teams per group)<input type="number" min="1" max="26" value={groups} onChange={e=>setGroups(Math.max(1,Math.min(26,Number(e.target.value))))}/><small className="muted">Maximum registrations: {groups*12} teams. Group assignment is automatic.</small></label>:<label>Team registration limit<input type="number" min="0" max="10000" value={teamLimit} onChange={e=>setTeamLimit(Math.max(0,Math.min(10000,Number(e.target.value))))}/><small className="muted">Enter 0 for no team limit.</small></label>}<div className="modal-note"><ShieldCheck size={16}/> A private organizer link will be generated. Save it securely; no email account or manager PIN is needed.</div><button className="primary full" onClick={()=>void createEvent()}>Publish event <ArrowRight size={16}/></button></div></div>}
-    {showJoin&&<div className="modal-bg" onClick={()=>setShowJoin(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><div className="eyebrow">TEAM REGISTRATION</div><h2>Register your squad</h2></div><button className="close" onClick={()=>setShowJoin(false)}><X/></button></div><p className="muted">Joining: {active?.name}</p><label>Team name<input value={teamName} onChange={e=>setTeamName(e.target.value)} placeholder="Your squad name"/></label><label>Four players (one per line)<textarea rows={6} value={roster} onChange={e=>setRoster(e.target.value)} placeholder={'Captain:UID123\nPlayer 2:UID456\nPlayer 3:UID789\nPlayer 4:UID012'}/></label><div className="modal-note"><ShieldCheck size={16}/> {active?.type==='Tournament'?`Group capacity: ${active?.groups||1} groups × 12 = ${active?.teamLimit||((active?.groups||1)*12)} teams.`:'Registration is subject to the event team limit.'} Your team access is saved on this device for private room details.</div><button className="primary full" onClick={()=>void registerTeam()}>Submit team registration <ArrowRight size={16}/></button></div></div>}
+    {showCreateSquad&&<div className="modal-bg" onClick={()=>setShowCreateSquad(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><div className="eyebrow">CREATE YOUR PERMANENT SQUAD</div><h2>Create your team</h2></div><button className="close" onClick={()=>setShowCreateSquad(false)}><X/></button></div><label>Team name<input value={squadName} onChange={e=>setSquadName(e.target.value)} placeholder="Your squad name" maxLength={40}/></label><label>4 or 5 players (one per line)<textarea rows={6} value={squadRoster} onChange={e=>setSquadRoster(e.target.value)} placeholder={'Captain:123456789\nPlayer 2:234567891\nPlayer 3:345678912\nPlayer 4:456789123\nPlayer 5:567891234'}/></label><div className="modal-note"><ShieldCheck size={16}/> Minimum 4 and maximum 5 players. Each player needs a unique 5–20 digit UID. The first player is the captain.</div><button className="primary full" onClick={()=>void createSquad()}>Create team & generate code <ArrowRight size={16}/></button></div></div>}{showTeamCode&&<div className="modal-bg" onClick={()=>setShowTeamCode(false)}><div className="modal team-code-modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><div className="eyebrow">TEAM CREATED SUCCESSFULLY</div><h2>Your team code</h2></div><button className="close" onClick={()=>setShowTeamCode(false)}><X/></button></div><p className="muted">Save this code and share it only with trusted teammates. You will need it to register this squad for events.</p><div className="generated-team-code">{createdTeamCode}</div><button className="primary full" onClick={()=>{void navigator.clipboard?.writeText(createdTeamCode);flash('Team code copied. Save it somewhere safe.');}}><Copy size={15}/> Copy team code</button><button className="outline full" onClick={()=>setShowTeamCode(false)}>Done</button></div></div>}{showJoin&&<div className="modal-bg" onClick={()=>setShowJoin(false)}><div className="modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><div><div className="eyebrow">TEAM REGISTRATION</div><h2>Register your squad</h2></div><button className="close" onClick={()=>setShowJoin(false)}><X/></button></div><p className="muted">Register your created squad for: {active?.name}</p><label>Team invite code<input value={registrationCode} onChange={e=>setRegistrationCode(e.target.value.toUpperCase())} placeholder="CA-XXXXXXXX" autoComplete="off"/></label><label>Captain player UID<input value={captainUid} onChange={e=>setCaptainUid(e.target.value)} inputMode="numeric" placeholder="Enter the captain UID"/></label><div className="modal-note"><ShieldCheck size={16}/> The code identifies your pre-created squad. The captain UID verifies ownership. All 4–5 player UIDs are checked for duplicates in this event.</div><button className="primary full" onClick={()=>void registerTeam()}>Submit team registration <ArrowRight size={16}/></button></div></div>}
   </div>;
 }
