@@ -176,6 +176,54 @@ router.post('/events/:id/teams',async(req,res)=>{
 });
 
 // A squad is created independently of any event. Its invite code is only returned once.
+// Player-owned permanent squads. The captain creates the squad from their signed-in profile.
+router.get('/players/teams',async(req,res)=>{
+  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\\s+/i,''));
+  if(!player)return bad(res,'Sign in to view your teams.',401);
+  const result=await pool.query("SELECT id,data FROM ca_squads WHERE data->>'ownerId'=$1 OR data @> $2::jsonb ORDER BY created_at DESC",[player.id,JSON.stringify({roster:[{playerId:player.id}]})]);
+  res.json({squads:result.rows.map(row=>({id:row.id,name:row.data.name,roster:row.data.roster,createdAt:row.data.createdAt,role:row.data.ownerId===player.id?'Captain':'Player',inviteCode:row.data.ownerId===player.id?row.data.inviteCode||'':undefined}))});
+});
+router.post('/teams',async(req,res)=>{
+  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\\s+/i,''));
+  if(!player)return bad(res,'Sign in before creating a team.',401);
+  const name=String(req.body?.name||'').trim();
+  if(name.length<2||name.length>40)return bad(res,'Team name must be 2–40 characters.');
+  const id=randomUUID(),code='CA-'+randomBytes(4).toString('hex').toUpperCase();
+  const roster=[{playerId:player.id,name:player.displayName,uid:player.uid}];
+  const data={name,ownerId:player.id,roster,createdAt:new Date().toISOString(),inviteHash:digest(code),inviteCode:code};
+  await pool.query('INSERT INTO ca_squads(id,code_hash,data) VALUES($1,$2,$3::jsonb)',[id,digest(code),JSON.stringify(data)]);
+  res.status(201).json({squad:{id,name,roster,createdAt:data.createdAt,role:'Captain',inviteCode:code}});
+});
+router.post('/teams/:id/invite',async(req,res)=>{
+  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\\s+/i,''));
+  if(!player)return bad(res,'Sign in first.',401);
+  const result=await pool.query('SELECT id,data FROM ca_squads WHERE id=$1',[req.params.id]);
+  if(!result.rows[0])return bad(res,'Team not found.',404);
+  const data=result.rows[0].data;
+  if(data.ownerId!==player.id)return bad(res,'Only the captain can create an invite.',403);
+  if(data.roster.length>=5)return bad(res,'Your team already has five players.',409);
+  const code='CA-'+randomBytes(4).toString('hex').toUpperCase();
+  data.inviteHash=digest(code);data.inviteCode=code;
+  await pool.query('UPDATE ca_squads SET code_hash=$2,data=$3::jsonb,updated_at=now() WHERE id=$1',[req.params.id,digest(code),JSON.stringify(data)]);
+  res.json({inviteCode:code});
+});
+router.post('/teams/join',async(req,res)=>{
+  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\\s+/i,''));
+  if(!player)return bad(res,'Sign in before joining a team.',401);
+  const code=String(req.body?.inviteCode||'').trim().toUpperCase().replace(/\\s+/g,'');
+  if(!/^CA-[A-F0-9]{8}$/.test(code))return bad(res,'Enter a valid team invite code.');
+  const result=await pool.query('SELECT id,data FROM ca_squads WHERE code_hash=$1',[digest(code)]);
+  if(!result.rows[0])return bad(res,'Invite code not found or expired.',404);
+  const data=result.rows[0].data;
+  if(data.roster.some((p:any)=>p.playerId===player.id))return bad(res,'You are already on this team.',409);
+  if(data.roster.some((p:any)=>p.uid===player.uid))return bad(res,'This player UID is already on the team.',409);
+  if(data.roster.length>=5)return bad(res,'This team is full.',409);
+  data.roster.push({playerId:player.id,name:player.displayName,uid:player.uid});
+  data.inviteHash=null;data.inviteCode='';
+  await pool.query('UPDATE ca_squads SET data=$2::jsonb,updated_at=now() WHERE id=$1',[result.rows[0].id,JSON.stringify(data)]);
+  res.status(201).json({squad:{id:result.rows[0].id,name:data.name,roster:data.roster,createdAt:data.createdAt,role:'Player'}});
+});
+
 router.post('/teams',async(req,res)=>{
   const input=req.body||{};
   if(typeof input.name!=='string'||input.name.trim().length<2||input.name.trim().length>40||!validRoster(input.players)||typeof input.accessToken!=='string'||input.accessToken.length<32) return bad(res,'Enter a team name and 4–5 players with unique numeric player UIDs (5–20 digits).');
