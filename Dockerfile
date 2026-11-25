@@ -3,11 +3,8 @@ FROM node:22-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
-COPY index.html ./
-COPY vite.config.ts tsconfig.json ./
-COPY tailwind.config.js postcss.config.js ./
+COPY index.html vite.config.ts tsconfig.json ./
 COPY src ./src
-COPY public ./public
 RUN npm run build
 
 FROM nginx:1.27-alpine
