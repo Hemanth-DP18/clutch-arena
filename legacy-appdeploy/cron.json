@@ -1,0 +1,8 @@
+[
+  {
+    "name": "cleanup-completed-events",
+    "cron": "*/5 * * * *",
+    "handler": "cleanupCompletedEvents",
+    "timezone": "Asia/Kolkata"
+  }
+]
