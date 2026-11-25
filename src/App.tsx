@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from './lib/api';
 import { Activity, ArrowRight, Award, BarChart3, CalendarDays, Check, ChevronRight, Copy, Crown, Download, Gamepad2, Plus, RefreshCw, ShieldCheck, Swords, Trophy, Users, X } from 'lucide-react';
 
@@ -21,6 +21,8 @@ export default function App() {
   const [teams,setTeams] = useState<Team[]>([]);
   const [teamHistory,setTeamHistory] = useState<TeamHistory[]>([]);
   const [activeId,setActiveId] = useState('');
+  const [selectedSquadId,setSelectedSquadId] = useState('');
+  const refreshSequence = useRef(0);
   const [tab,setTab] = useState('Discover');
   const [loading,setLoading] = useState(true);
   const [notice,setNotice] = useState('');
@@ -65,9 +67,11 @@ export default function App() {
   const active = events.find(e => e.id === activeId);
   const activeTeams = teams.filter(t => t.eventId === active?.id);
   const refresh = async (selected?:string, linkedTeamId?:string) => {
+    const requestId = ++refreshSequence.current;
     setLoading(true);
     try {
       const response = await api.get('/api/events');
+      if (requestId !== refreshSequence.current) return;
       const list = (response.data.events || []) as EventItem[];
       const publicTeams = (response.data.teams || []) as Team[];
       const publicHistory = (response.data.history || []) as TeamHistory[];
@@ -85,13 +89,14 @@ export default function App() {
         const detail = await api.get('/api/events/' + encodeURIComponent(eventId));
         return [eventId,detail.data.event] as const;
       }));
+      if (requestId !== refreshSequence.current) return;
       const detailMap = new Map(details);
       setEvents(list.map(item=>detailMap.get(item.id)||item));
       setRoom(null);
     } catch {
-      setNotice('Could not load shared events and team names. Please refresh in a moment.');
+      if (requestId === refreshSequence.current) setNotice('Could not load shared events and team names. Please refresh in a moment.');
     } finally {
-      setLoading(false);
+      if (requestId === refreshSequence.current) setLoading(false);
     }
   };
   useEffect(() => {
@@ -132,6 +137,10 @@ export default function App() {
   }, []);
   useEffect(() => { localStorage.setItem('ca-organizer-links',JSON.stringify(organizerTokens)); },[organizerTokens]);
   useEffect(() => { localStorage.setItem('ca-team-access',JSON.stringify(teamTokens)); },[teamTokens]);
+  useEffect(() => {
+    if (!linkedSquads.length) { setSelectedSquadId(''); return; }
+    if (!linkedSquads.some(squad=>squad.team.id===selectedSquadId)) setSelectedSquadId(linkedSquads[0].team.id);
+  },[linkedSquads,selectedSquadId]);
   useEffect(() => { const timer=window.setInterval(()=>{ if(activeId) void refresh(activeId); },60000); return ()=>window.clearInterval(timer); },[activeId]);
   useEffect(() => { if (!active) return; setRegistrationOpensAt(toLocalInput(active.registrationOpensAt)); setRegistrationClosesAt(toLocalInput(active.registrationClosesAt)); setManageGroups(active.groups||1); setManageTeamLimit(active.teamLimit||0); setAutoScheduleStartAt(toLocalInput(active.autoScheduleStartAt)); setMatchIntervalMinutes(active.matchIntervalMinutes||30); setSelectedScheduleId(active.matchSchedule?.[0]?.id||''); },[active?.id]);
   useEffect(() => {
@@ -349,12 +358,29 @@ export default function App() {
       return {team,activeEvents,completedEvents,archived,kills,pointsTotal,booyahs};
     });
   },[teamTokens,teams,events,teamHistory]);
+  const visibleSquads = selectedSquadId ? linkedSquads.filter(squad=>squad.team.id===selectedSquadId) : linkedSquads.slice(0,1);
+  const leaveTeamDashboard = () => {
+    history.pushState({clutchTab:'Discover'},'',location.pathname+location.search);
+    setRoom(null); setTab('Discover');
+    document.getElementById('events')?.scrollIntoView({behavior:'smooth',block:'start'});
+  };
   const startTeamCreation = () => {
     const target = events.find(event=>event.status==='Registration open');
     if(!target){setTab('Discover');flash('No event is accepting team registrations right now. Explore events and try again when registration opens.');return;}
     setActiveId(target.id);setTeamName('');setRoster('');setShowJoin(true);
   };
   const isOrganizer = !!active && !!organizerTokens[active.id];
+  useEffect(() => {
+    const onPopState = (event:PopStateEvent) => {
+      const hash = new URLSearchParams(location.hash.replace(/^#/,''));
+      if (hash.has('manage')) setTab('Manage');
+      else if (hash.has('team')) setTab('Team');
+      else if (hash.has('watch')) setTab('Standings');
+      else setTab(event.state?.clutchTab || 'Discover');
+    };
+    window.addEventListener('popstate',onPopState);
+    return () => window.removeEventListener('popstate',onPopState);
+  },[]);
   const copyViewerLink = () => { if(!active) return; copy(location.origin+location.pathname+'#watch='+active.id); };
   const copy = async (value:string) => { try { await navigator.clipboard.writeText(value); flash('Copied to clipboard.'); } catch { flash('Copy is unavailable in this browser.'); } };
   const importOrganizerLink = () => { const raw=prompt('Paste your private organizer link:'); if(!raw)return;try{const u=new URL(raw);const id=u.hash.match(/manage=([^&]+)/)?.[1];const key=u.hash.match(/key=([^&]+)/)?.[1];if(!id||!key)throw new Error();const decoded=decodeURIComponent(id);location.hash=`manage=${decoded}&key=${key}`;setOrganizerTokens(v=>({...v,[decoded]:key}));setActiveId(decoded);setTab('Manage');void (async()=>{await refresh(decoded);try{const savedRoom=await api.post('/api/events/'+encodeURIComponent(decoded)+'/organizer-room',{organizerToken:key});setRoomId(savedRoom.data.roomId||'');setRoomPassword(savedRoom.data.roomPassword||'');}catch{setRoomId('');setRoomPassword('');}})();flash('Manager workspace opened.');}catch{flash('That organizer link is not valid or the event was deleted.');} };
@@ -373,7 +399,7 @@ export default function App() {
           <section className="panel detail-panel">{active?<><div className="panel-head"><h3><CalendarDays size={17}/> Event details</h3><span>{active.id}</span></div><div className="event-title"><span className="eyebrow">{active.type.toUpperCase()} / {active.game.toUpperCase()}</span><h2>{active.name}</h2><p>{active.mode} · {active.matches} matches · {active.stage} · {active.type==='Tournament'?`${active.groups||1} groups × 12 teams (${active.teamLimit||((active.groups||1)*12)} slots)`:(active.teamLimit?`${active.teamLimit} team limit`:'Open team registration')} · Free entry · {active.registrationOpensAt?`Opens ${new Date(active.registrationOpensAt).toLocaleString()}`:''} {active.registrationClosesAt?`Closes ${new Date(active.registrationClosesAt).toLocaleString()}`:''}</p></div><div className="event-actions"><button className="primary" onClick={()=>setShowJoin(true)} disabled={active.status!=='Registration open'}><Users size={15}/> Register your team</button><button className="outline" onClick={()=>setTab('Standings')}><BarChart3 size={15}/> View standings</button><button className="outline" onClick={copyViewerLink}>Copy public match-view link</button>{isOrganizer&&<button className="outline danger-action" onClick={()=>void deleteEvent()}>Delete {active.type}</button>}</div><div className="detail-stats"><div><small>REGISTERED / CAP</small><b>{activeTeams.length} / {active.teamLimit||'∞'}</b></div><div><small>MATCHES</small><b>{active.matches}</b></div><div><small>STATUS</small><b>{active.status==='Registration open'?'OPEN':active.status.toUpperCase()}</b></div></div>{isOrganizer&&<div className="organizer-box"><div><b><ShieldCheck size={16}/> Organizer controls unlocked</b><small>Your private organizer access is active on this device.</small></div><button className="outline small" onClick={()=>copy(location.origin+location.pathname+'#manage='+active.id+'&key='+organizerTokens[active.id])}><Copy size={13}/> Copy link</button></div>}{tab==='Manage'&&isOrganizer&&<div className="manage-box"><h3>Manage this event</h3><section className="manager-section room-manager"><h4><ShieldCheck size={16}/> Custom Room ID & Password</h4><p className="muted">Enter the custom room credentials after creating the room in Free Fire. Save them here so registered teams can access them at the scheduled release time.</p><label>Room ID<input value={roomId} onChange={e=>setRoomId(e.target.value)} placeholder="Enter custom room ID" autoComplete="off"/></label><label>Room Password<input value={roomPassword} onChange={e=>setRoomPassword(e.target.value)} placeholder="Enter custom room password" autoComplete="off"/></label><label>Release credentials (minutes before match)<input type="number" min="0" max="120" value={roomReleaseMinutes} onChange={e=>setRoomReleaseMinutes(Math.max(0,Math.min(120,Number(e.target.value))))}/></label><button className="primary" onClick={()=>void manage({roomId,roomPassword,roomReleaseMinutes})}>Save & publish room details</button><small className="muted">{active.roomPublished?'Room details are saved and will unlock for registered teams during the release window.':'Room details are not published yet.'}</small></section><section className="manager-section"><h4>Team slot allotment</h4><p className="muted">Assign or change each registered squad’s lobby slot. The assigned slot is shown in the team dashboard and standings.</p>{activeTeams.length===0?<div className="schedule-empty">Registered teams will appear here.</div>:activeTeams.map(team=><div className="payment-row slot-row" key={team.id}><span><b>{team.name}</b><small>{team.group||'All teams'} · Current Slot {team.slot}</small></span><label>Slot number<input aria-label={'Slot for '+team.name} type="number" min="1" max={active.type==='Tournament'?(active.groups||1)*12:(active.teamLimit||10000)} value={slotDraft[team.id]??team.slot} onChange={e=>setSlotDraft(current=>({...current,[team.id]:Number(e.target.value)}))}/></label><button className="outline tiny" onClick={()=>void updateTeamSlot(team)}>Save slot</button></div>)}</section><section className="manager-section"><h4>Registration control</h4>{active.type==='Tournament'?<label>Number of groups (12 teams each)<input type="number" min="1" max="26" value={manageGroups} onChange={e=>setManageGroups(Math.max(1,Math.min(26,Number(e.target.value))))}/><small className="muted">Registration capacity: {manageGroups*12} teams</small></label>:<label>Maximum teams (0 = unlimited)<input type="number" min="0" max="10000" value={manageTeamLimit} onChange={e=>setManageTeamLimit(Math.max(0,Math.min(10000,Number(e.target.value))))}/></label>}<label>Registration opens<input type="datetime-local" value={registrationOpensAt} onChange={e=>setRegistrationOpensAt(e.target.value)}/></label><label>Registration closes<input type="datetime-local" value={registrationClosesAt} onChange={e=>setRegistrationClosesAt(e.target.value)}/></label><small className="muted">Times use this device's local timezone. Leave a date blank for no scheduled time boundary.</small><button className="primary" onClick={()=>void saveRegistrationSettings()}>Save registration settings</button><div className="manager-actions"><button className="outline" onClick={()=>void manage({status:'Registration open'})}>Open registration</button><button className="outline" onClick={()=>void manage({status:'Registration closed'})}>Close registration now</button></div></section><section className="manager-section"><h4>Automatic group match schedule</h4><p className="muted">After registration closes, ClutchArena creates every match slot for every active group. Groups play each round in parallel. The manager can change a delayed match without removing its teams.</p><label>First round starts<input type="datetime-local" value={autoScheduleStartAt} onChange={e=>setAutoScheduleStartAt(e.target.value)}/></label><label>Minutes between rounds<input type="number" min="15" max="240" value={matchIntervalMinutes} onChange={e=>setMatchIntervalMinutes(Math.max(15,Math.min(240,Number(e.target.value))))}/></label><button className="primary" onClick={()=>void saveAutoScheduleSettings()}>Save automatic schedule settings</button>{(active.matchSchedule||[]).length===0?<div className="schedule-empty">The group timetable will be generated automatically when registration closes and at least one team is registered.</div>:<><div className="published-schedule manager-schedule">{[...(active.matchSchedule||[])].sort((a,b)=>new Date(a.startsAt).getTime()-new Date(b.startsAt).getTime()).map(slot=><div key={slot.id}><b>{slot.label}</b><small>{slot.group} · Match {slot.match} · {new Date(slot.startsAt).toLocaleString()}</small><span className={'schedule-status '+slot.status.toLowerCase()}>{slot.status}</span></div>)}</div><label>Select match to update<select value={selectedScheduleId || active.matchSchedule?.[0]?.id || ''} onChange={e=>setSelectedScheduleId(e.target.value)}>{(active.matchSchedule||[]).map(slot=><option key={slot.id} value={slot.id}>{slot.group} · Match {slot.match} · {slot.status}</option>)}</select></label><label>New match date and time<input type="datetime-local" value={rescheduleAt} onChange={e=>setRescheduleAt(e.target.value)}/></label><div className="manager-actions"><button className="outline" onClick={()=>void updateScheduleStatus('Delayed')}>Mark delayed</button><button className="outline" onClick={()=>void updateScheduleStatus('Cancelled')}>Mark cancelled</button><button className="outline" onClick={()=>void updateScheduleStatus('Completed')}>Mark completed</button></div><button className="primary" onClick={()=>void rescheduleSelectedMatch()}>Reschedule match</button><small className="muted">Delayed or cancelled slots can be rescheduled. Their teams stay registered in the same group and remain eligible.</small></>}</section><div className="manage-results"><h4>Confirm match results</h4><label>Match<select value={selectedMatch} onChange={e=>setSelectedMatch(Number(e.target.value))}>{Array.from({length:active.matches},(_,i)=><option value={i} key={i}>Match {i+1}</option>)}</select></label>{activeTeams.map(t=><div className="result-line" key={t.id}><b>{t.name}</b><input aria-label="Placement" type="number" min="1" max={activeTeams.length} placeholder="Place" value={resultDraft[t.id+'-'+selectedMatch]?.placement??''} onChange={e=>setResultDraft(v=>({...v,[t.id+'-'+selectedMatch]:{placement:Number(e.target.value),kills:v[t.id+'-'+selectedMatch]?.kills||0}}))}/><input aria-label="Kills" type="number" min="0" placeholder="Kills" value={resultDraft[t.id+'-'+selectedMatch]?.kills??''} onChange={e=>setResultDraft(v=>({...v,[t.id+'-'+selectedMatch]:{placement:v[t.id+'-'+selectedMatch]?.placement||1,kills:Number(e.target.value)}}))}/><button className="primary small" onClick={()=>void confirmResult(t)}>Confirm</button></div>)}</div><button className="outline" onClick={()=>void manage({status:'In progress'})}>Start event</button><button className="primary" disabled={active.status==='Completed'} onClick={()=>void markEventCompleted()}>Complete event & download standings photo</button><section className="manager-section cleanup-notice"><h4>Event cleanup</h4><p className="muted">Completed events are automatically deleted after 24 hours. Scrims are also removed within 24 hours of completion. Download the overall standings PNG before the cleanup time.</p><button className="outline danger-action" onClick={()=>void deleteEvent()}>Delete this event now</button></section></div>}</>:<div className="empty"><Trophy size={28}/><b>Select an event</b><p>Choose an event or create a new competition.</p><button className="primary" onClick={()=>setShowCreate(true)}>Host an event</button></div>}</section>
         </div>
         {tab==='Team'&&<section className="team-dashboard">
-          <div className="team-portal-head"><div><div className="eyebrow">SQUAD COMMAND CENTRE</div><h2>My Team</h2><p>Your squads, current registrations and complete match history.</p></div><button className="outline" onClick={()=>void refresh(activeId)}><RefreshCw size={14}/> Refresh dashboard</button></div>
+          <div className="team-portal-head"><div><div className="eyebrow">SQUAD COMMAND CENTRE</div><h2>My Team</h2><p>Your squads, current registrations and complete match history.</p></div><div className="team-dashboard-actions"><button className="outline" onClick={()=>void refresh(activeId)}><RefreshCw size={14}/> Refresh dashboard</button><button className="outline" onClick={leaveTeamDashboard}>← Back to events</button></div></div>
           <section className="dream-team-banner">
             <div className="dream-team-copy">
               <span className="dream-team-kicker"><Swords size={14}/> YOUR SQUAD. YOUR LEGACY.</span>
@@ -384,7 +410,8 @@ export default function App() {
             </div>
             <div className="dream-team-art" aria-hidden="true"><div className="dream-orbit orbit-a"/><div className="dream-orbit orbit-b"/><div className="dream-emblem"><Trophy size={54}/></div><span className="dream-art-label">BUILT TO COMPETE</span></div>
           </section>
-          {loading?<div className="panel team-empty">Loading your team dashboard…</div>:linkedSquads.length===0?<div className="panel team-empty"><Users size={28}/><h3>No team linked yet</h3><p>Register your squad in an event, or import the private team access link you received after registration.</p><button className="primary" onClick={()=>setTab('Discover')}>Explore events</button></div>:linkedSquads.map((squad,index)=><article className="panel team-dashboard-card" key={squad.team.id}>
+          {linkedSquads.length>1&&<div className="panel squad-switcher"><label htmlFor="squad-switch">Select your team</label><select id="squad-switch" value={selectedSquadId} onChange={e=>setSelectedSquadId(e.target.value)}>{linkedSquads.map(squad=><option key={squad.team.id} value={squad.team.id}>{squad.team.name} · {squad.activeEvents.length} active events</option>)}</select><small>Switching teams updates the dashboard without losing registrations or match history.</small></div>}
+          {loading?<div className="panel team-empty">Loading your team dashboard…</div>:linkedSquads.length===0?<div className="panel team-empty"><Users size={28}/><h3>No team linked yet</h3><p>Register your squad in an event, or import the private team access link you received after registration.</p><button className="primary" onClick={()=>setTab('Discover')}>Explore events</button></div>:visibleSquads.map((squad,index)=><article className="panel team-dashboard-card" key={squad.team.id}>
             <div className="team-dashboard-title"><div><div className="eyebrow">MY SQUAD · {squad.team.createdAt?'CREATED '+new Date(squad.team.createdAt).toLocaleDateString():'REGISTERED TEAM'}</div><h3>{squad.team.name}</h3><p>Captain: {squad.team.captain} · {squad.team.roster.length} players</p></div><span className="status">{squad.activeEvents.length?'ACTIVE':'HISTORY'}</span></div>
             <div className="team-dashboard-stats"><div><small>TOTAL KILLS</small><b>{squad.kills}</b></div><div><small>BOOYAHS</small><b>{squad.booyahs}</b></div><div><small>CAREER POINTS</small><b>{squad.pointsTotal}</b></div><div><small>EVENTS PLAYED</small><b>{squad.activeEvents.length+squad.completedEvents.length+squad.archived.length}</b></div></div>
             <div className="team-roster">{squad.team.roster.map((player,i)=><span key={i}>{player.name}<small>{i===0?'CAPTAIN':'PLAYER '+(i+1)}</small></span>)}</div>
