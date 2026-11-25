@@ -10,7 +10,24 @@ const router = Router();
 const digest = (value:string) => createHash('sha256').update(value).digest('hex');
 const makePasswordHash=(password:string,salt:string)=>scryptSync(password,salt,64).toString('hex');
 const validPlayerUid=(uid:unknown)=>typeof uid==='string'&&/^\d{5,20}$/.test(uid.trim());
-const playerFromToken=async(token:unknown)=>{if(typeof token!=='string'||token.length<32)return undefined;const result=await pool.query('SELECT id,username,profile FROM ca_players WHERE token_hash=$1',[digest(token)]);return result.rows[0]?{id:result.rows[0].id,username:result.rows[0].username,...result.rows[0].profile}:undefined;};
+const playerFromToken=async(token:unknown)=>{
+  if(typeof token!=='string'||token.length<32)return undefined;
+  const result=await pool.query('SELECT id,username,profile FROM ca_players WHERE token_hash=$1',[digest(token)]);
+  const row=result.rows[0];if(!row)return undefined;
+  const profile={...(row.profile||{})};
+  if(!profile.caid){
+    for(let attempt=0;attempt<8;attempt++){
+      const candidate='CAID-'+randomBytes(4).toString('hex').toUpperCase();
+      const exists=await pool.query("SELECT 1 FROM ca_players WHERE upper(profile->>'caid')=$1 LIMIT 1",[candidate]);
+      if(!exists.rowCount){
+        profile.caid=candidate;
+        await pool.query('UPDATE ca_players SET profile=$2::jsonb,updated_at=now() WHERE id=$1',[row.id,JSON.stringify(profile)]);
+        break;
+      }
+    }
+  }
+  return {id:row.id,username:row.username,...profile};
+};
 const bad = (res:Response,message:string,status=400) => res.status(status).json({error:message});
 const safeEvent = (event:Event) => { const {organizerHash,roomId,roomPassword,...visible}=event; return visible; };
 const getSquad = async (id:string):Promise<Squad|undefined> => {
