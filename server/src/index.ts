@@ -4,6 +4,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { checkDatabase, pool } from './db.js';
+import apiRoutes from './routes.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -36,8 +37,9 @@ app.get('/api/_ready', async (_req, res) => {
   }
 });
 
-// Domain routes are added in the next migration stage. Keeping this explicit
-// prevents the frontend from silently receiving a successful empty response.
+app.use('/api', apiRoutes);
+
+// Unmigrated routes fail explicitly instead of returning fake success.
 app.use('/api', (_req, res) => {
   res.status(501).json({ error: 'This Clutch Arena API route is not migrated yet.' });
 });
