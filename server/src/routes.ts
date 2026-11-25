@@ -3,8 +3,8 @@ import { Router, type Request, type Response } from 'express';
 import { pool } from './db.js';
 
 type MatchSlot = { id:string; match:number; group:string; startsAt:string; label:string; status:'Scheduled'|'Delayed'|'Cancelled'|'Completed'; delayReason?:string; updatedAt?:string };
-type Team = { id:string; eventId:string; name:string; captain:string; roster:{name:string;uid:string}[]; slot:number; group?:string; createdAt:string; paymentStatus:'Pending'|'Verified'|'Not required'; results:{placement:number;kills:number;confirmed:boolean}[]; accessHash:string };
-type Event = { id:string; name:string; game:string; type:'Tournament'|'Scrim'; mode:string; matches:number; groups:number; teamLimit:number; status:string; stage:string; createdAt:string; completedAt?:string; organizerHash:string; roomReleaseMinutes?:number; entryFeeMode?:'Free'|'Paid'; entryFee?:number; prizePool?:number; prizeShares?:number[]; prizeDistribution?:any[]; prizePublishedAt?:string; roomId?:string; roomPassword?:string; registrationOpensAt?:string; registrationClosesAt?:string; autoScheduleStartAt?:string; matchIntervalMinutes?:number; matchSchedule?:MatchSlot[] };
+type Team = { id:string; eventId:string; name:string; captain:string; roster:{name:string;uid:string}[]; slot:number; group?:string; createdAt:string; results:{placement:number;kills:number;confirmed:boolean}[]; accessHash:string };
+type Event = { id:string; name:string; game:string; type:'Tournament'|'Scrim'; mode:string; matches:number; groups:number; teamLimit:number; status:string; stage:string; createdAt:string; completedAt?:string; organizerHash:string; roomReleaseMinutes?:number; roomId?:string; roomPassword?:string; registrationOpensAt?:string; registrationClosesAt?:string; autoScheduleStartAt?:string; matchIntervalMinutes?:number; matchSchedule?:MatchSlot[] };
 const router = Router();
 const digest = (value:string) => createHash('sha256').update(value).digest('hex');
 const bad = (res:Response,message:string,status=400) => res.status(status).json({error:message});
@@ -98,11 +98,7 @@ router.post('/events',async(req,res)=>{
   if(typeof input.name!=='string'||!input.name.trim()||typeof input.organizerToken!=='string'||!input.organizerToken||!['Free Fire India','Free Fire MAX'].includes(input.game)||!['Scrim','Tournament'].includes(input.type)) return bad(res,'Valid event details are required');
   const matches=Math.max(1,Math.min(30,Number(input.matches)||1));
   const groups=input.type==='Tournament'?Math.max(1,Math.min(26,Math.floor(Number(input.groups)||1))):0;
-  const entryFeeMode=input.entryFeeMode==='Paid'?'Paid':'Free';
-  const entryFee=entryFeeMode==='Paid'?Math.max(1,Math.min(100000,Math.floor(Number(input.entryFee)||0))):0;
-  const shares=Array.isArray(input.prizeShares)?input.prizeShares.slice(0,3).map((v:unknown)=>Math.max(0,Math.min(100,Math.floor(Number(v)||0)))):[50,30,20];
-  if(shares.length!==3||shares.reduce((a:number,b:number)=>a+b,0)!==100) return bad(res,'Prize shares must add up to 100 percent');
-  const event:Event={id:randomUUID(),name:input.name.trim().slice(0,100),game:input.game,type:input.type,mode:input.mode==='Clash Squad'?'Clash Squad':'Battle Royale',matches,groups,teamLimit:input.type==='Tournament'?groups*12:Math.max(0,Math.min(10000,Math.floor(Number(input.teamLimit)||0))),status:'Registration open',stage:'Open Qualifier',createdAt:new Date().toISOString(),organizerHash:digest(input.organizerToken),entryFeeMode,entryFee,prizePool:Math.max(0,Math.min(100000000,Math.floor(Number(input.prizePool)||0))),prizeShares:shares};
+  const event:Event={id:randomUUID(),name:input.name.trim().slice(0,100),game:input.game,type:input.type,mode:input.mode==='Clash Squad'?'Clash Squad':'Battle Royale',matches,groups,teamLimit:input.type==='Tournament'?groups*12:Math.max(0,Math.min(10000,Math.floor(Number(input.teamLimit)||0))),status:'Registration open',stage:'Open Qualifier',createdAt:new Date().toISOString(),organizerHash:digest(input.organizerToken)};
   await pool.query('INSERT INTO ca_events(id,data) VALUES($1,$2::jsonb)',[event.id,JSON.stringify(event)]);
   res.status(201).json({event:safeEvent(event)});
 });
@@ -126,7 +122,7 @@ router.post('/events/:id/teams',async(req,res)=>{
   if(event.teamLimit>0&&teams.length>=event.teamLimit) return bad(res,'This event has reached its team registration limit',409);
   if(teams.some(t=>t.name.toLowerCase()===input.name.trim().toLowerCase())) return bad(res,'That team name is already registered',409);
   const slot=teams.length+1;
-  const team:Team={id:randomUUID(),eventId:event.id,name:input.name.trim().slice(0,60),captain:String(roster[0].name).trim(),roster:roster.map((p:any)=>({name:String(p.name).trim(),uid:String(p.uid).trim()})),slot,group:event.type==='Tournament'?`Group ${String.fromCharCode(65+Math.floor(teams.length/12))}`:undefined,createdAt:new Date().toISOString(),paymentStatus:event.entryFeeMode==='Paid'?'Pending':'Not required',results:Array.from({length:event.matches},()=>({placement:0,kills:0,confirmed:false})),accessHash:digest(input.accessToken)};
+  const team:Team={id:randomUUID(),eventId:event.id,name:input.name.trim().slice(0,60),captain:String(roster[0].name).trim(),roster:roster.map((p:any)=>({name:String(p.name).trim(),uid:String(p.uid).trim()})),slot,group:event.type==='Tournament'?`Group ${String.fromCharCode(65+Math.floor(teams.length/12))}`:undefined,createdAt:new Date().toISOString(),results:Array.from({length:event.matches},()=>({placement:0,kills:0,confirmed:false})),accessHash:digest(input.accessToken)};
   await pool.query('INSERT INTO ca_teams(id,event_id,data) VALUES($1,$2,$3::jsonb)',[team.id,event.id,JSON.stringify(team)]);
   res.status(201).json({team:{id:team.id}});
 });
@@ -166,12 +162,6 @@ router.put('/events/:id',async(req,res)=>{
   const teams=await getTeams(updated.id);
   if(updated.type==='Tournament'&&input.groups!==undefined){const groups=Math.max(1,Math.min(26,Math.floor(Number(input.groups)||1)));if(teams.length>groups*12)return bad(res,'Cannot reduce groups below the number needed for registered teams',409);updated.groups=groups;updated.teamLimit=groups*12;for(const team of teams){team.group=`Group ${String.fromCharCode(65+Math.floor((team.slot-1)/12))}`;await saveTeam(team);}}
   else if(updated.type==='Scrim'&&input.teamLimit!==undefined){const cap=Math.max(0,Math.min(10000,Math.floor(Number(input.teamLimit)||0)));if(cap>0&&teams.length>cap)return bad(res,'Cannot set a limit below the number of registered teams',409);updated.teamLimit=cap;}
-  if(input.entryFeeMode!==undefined){updated.entryFeeMode=input.entryFeeMode==='Paid'?'Paid':'Free';if(updated.entryFeeMode==='Free')updated.entryFee=0;}
-  if(input.entryFee!==undefined)updated.entryFee=updated.entryFeeMode==='Paid'?Math.max(1,Math.min(100000,Math.floor(Number(input.entryFee)||0))):0;
-  if(updated.entryFeeMode==='Paid'&&!(Number(updated.entryFee)>0))return bad(res,'A paid event needs a valid entry fee');
-  if(input.prizePool!==undefined)updated.prizePool=Math.max(0,Math.min(100000000,Math.floor(Number(input.prizePool)||0)));
-  if(input.prizeShares!==undefined){if(!Array.isArray(input.prizeShares)||input.prizeShares.length!==3)return bad(res,'Prize distribution must have three places');const shares=input.prizeShares.map((v:unknown)=>Math.max(0,Math.min(100,Math.floor(Number(v)||0))));if(shares.reduce((a:number,b:number)=>a+b,0)!==100)return bad(res,'Prize shares must add up to 100 percent');updated.prizeShares=shares;}
-  if(input.prizeDistribution!==undefined){if(!Array.isArray(input.prizeDistribution))return bad(res,'Prize distribution must be a list');const awards=input.prizeDistribution.map((a:any)=>({teamId:String(a.teamId||'').slice(0,100),teamName:String(a.teamName||'').slice(0,60),rank:Math.max(1,Math.min(3,Math.floor(Number(a.rank)||1))),share:Math.max(0,Math.min(100,Math.floor(Number(a.share)||0))),amount:Math.max(0,Math.floor(Number(a.amount)||0)),status:a.status==='Paid'?'Paid':'Pending',paidAt:a.paidAt?String(a.paidAt):undefined}));if(awards.some((a:any)=>!a.teamId||!a.teamName||!teams.some(t=>t.id===a.teamId&&t.name===a.teamName)))return bad(res,'Prize awards must match registered teams');updated.prizeDistribution=awards;if(input.prizePublishedAt!==undefined)updated.prizePublishedAt=input.prizePublishedAt||undefined;}
   for(const key of ['registrationOpensAt','registrationClosesAt','autoScheduleStartAt'] as const) if(input[key]!==undefined) (updated as any)[key]=input[key]||undefined;
   if(input.matchIntervalMinutes!==undefined)updated.matchIntervalMinutes=Math.max(15,Math.min(240,Math.floor(Number(input.matchIntervalMinutes)||30)));
   for(const key of ['registrationOpensAt','registrationClosesAt','autoScheduleStartAt'] as const)if(updated[key]&&Number.isNaN(new Date(updated[key]!).getTime()))return bad(res,'Invalid date/time value');
@@ -198,15 +188,13 @@ router.put('/events/:id/teams/:teamId',async(req,res)=>{
   if(!team)return bad(res,'Team not found',404);
   const hasResults=Array.isArray(input.results);const results=hasResults?input.results.slice(0,event!.matches):[];
   const maxPlacement=event!.type==='Tournament'?teams.filter(t=>t.group===team.group).length:teams.length;
-  if(input.paymentStatus!==undefined&&!['Pending','Verified'].includes(input.paymentStatus))return bad(res,'Invalid entry payment status');
   if(input.slot!==undefined){const slot=Number(input.slot),capacity=event!.type==='Tournament'?Math.max(1,event!.groups*12):(Number(event!.teamLimit)||10000);if(!Number.isInteger(slot)||slot<1||slot>capacity)return bad(res,'Choose a slot within the event capacity');if(teams.some(t=>t.id!==team.id&&t.slot===slot))return bad(res,'That slot is already assigned',409);team.slot=slot;team.group=event!.type==='Tournament'?`Group ${String.fromCharCode(65+Math.floor((slot-1)/12))}`:undefined;}
-  if(input.paymentStatus!==undefined)team.paymentStatus=input.paymentStatus;
-  if(!hasResults&&input.paymentStatus===undefined&&input.slot===undefined)return bad(res,'No team update was supplied');
+  if(!hasResults&&input.slot===undefined)return bad(res,'No team update was supplied');
   if(hasResults&&(!results.length||results.some((r:any)=>r?.confirmed&&(!Number.isInteger(Number(r.placement))||Number(r.placement)<1||Number(r.placement)>Math.max(1,maxPlacement)||!Number.isInteger(Number(r.kills))||Number(r.kills)<0||Number(r.kills)>999))))return bad(res,'Confirmed match results need a valid placement and kills value');
   const previousResults=team.results.map(r=>({...r}));
   if(hasResults)team.results=team.results.map((old,i)=>results[i]?.confirmed?{placement:Number(results[i].placement),kills:Number(results[i].kills),confirmed:true}:old);
   await saveTeam(team);
-  if(!hasResults)return res.json({ok:true,paymentStatus:team.paymentStatus,slot:team.slot,group:team.group});
+  if(!hasResults)return res.json({ok:true,slot:team.slot,group:team.group});
   const changed=results.findIndex((r:any,i:number)=>r?.confirmed&&(!previousResults[i]?.confirmed||previousResults[i].placement!==Number(r.placement)||previousResults[i].kills!==Number(r.kills)));
   const matchTeams=await getTeams(event!.id);const groupTeams=matchTeams.filter(t=>event!.type!=='Tournament'||t.group===team.group);
   const complete=changed>=0&&groupTeams.length>0&&groupTeams.every(t=>t.results?.[changed]?.confirmed);
@@ -219,7 +207,6 @@ router.post('/events/:id/room',async(req,res)=>{
   if(!event||!input.teamId||!input.accessToken)return bad(res,'Team access is required',403);
   const teams=await getTeams(event.id);const team=teams.find(t=>t.id===input.teamId);
   if(!requireTeam(team,event.id,input.accessToken))return bad(res,'Team access denied',403);
-  if(event.entryFeeMode==='Paid'&&team!.paymentStatus!=='Verified')return bad(res,'Your team entry payment has not been verified by the organizer yet',403);
   if(!event.roomId||!event.roomPassword)return bad(res,'The manager has not published room details yet',404);
   const eligible=(event.matchSchedule||[]).filter(s=>s.group===(team!.group||'All teams')&&['Scheduled','Delayed'].includes(s.status)).sort((a,b)=>new Date(a.startsAt).getTime()-new Date(b.startsAt).getTime());
   if(!eligible.length)return bad(res,'Your match schedule is not available yet',404);
