@@ -617,3 +617,20 @@ button:focus-visible,a:focus-visible{outline:2px solid #c4b5fd;outline-offset:3p
 }
 
 @media print{body *{visibility:hidden!important}.report-print-area,.report-print-area *{visibility:visible!important}.report-print-area{position:absolute!important;left:0!important;top:0!important;width:100%!important;background:#fff!important;color:#111!important;box-shadow:none!important;border:0!important}.report-print-area table{width:100%!important;border-collapse:collapse!important}.report-print-area th,.report-print-area td{color:#111!important;border:1px solid #bbb!important;padding:8px!important}.report-print-area button{display:none!important}}
+
+
+/* Always-visible account access and dedicated profile page */
+.account-action{display:inline-flex!important;white-space:nowrap}
+.profile-page{max-width:900px;margin:0 auto 28px;display:grid;gap:14px;animation:workspace-in .25s ease both}
+.profile-page .team-portal-head{margin:8px 0 4px}
+.profile-details-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:18px 0}
+.profile-details-grid>div{min-width:0;padding:13px;border:1px solid #ffffff12;border-radius:9px;background:#0c1220}
+.profile-details-grid small,.profile-details-grid b{display:block;overflow-wrap:anywhere}
+.profile-details-grid small{color:#9a91b5;font-size:8px;font-weight:800;letter-spacing:1px}
+.profile-details-grid b{margin-top:6px;color:#eee9ff;font-size:12px}
+.profile-guest-card{padding:24px}
+.profile-guest-card h3{margin:0 0 8px;font-size:17px}
+.profile-guest-card p{max-width:560px;color:#9ca7bb;font-size:11px;line-height:1.7}
+.profile-guest-actions{display:flex;gap:9px;margin-top:16px}
+@media(max-width:800px){.top-actions .account-action{display:inline-flex!important;font-size:9px;padding:8px 10px}}
+@media(max-width:560px){.top-actions .account-action{font-size:0;padding:9px;min-width:36px}.top-actions .account-action:after{content:'👤';font-size:15px}.profile-details-grid{grid-template-columns:1fr}.profile-guest-actions{display:grid;grid-template-columns:1fr 1fr}.profile-guest-actions button{width:100%}}
