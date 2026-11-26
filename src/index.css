@@ -773,3 +773,25 @@ button:active{transform:scale(.985)}
 .official-scoring-table>div:last-child{grid-column:1/-1;border-bottom:0;background:#a78bfa14}
 .official-scoring-table b{font-weight:800}
 .scoring-official-note{border-color:#a78bfa55;background:#a78bfa0d}
+
+/* Clutch Arena enhanced navigation and content transitions */
+@keyframes ca-content-reveal{0%{opacity:0;transform:translate3d(0,18px,0) scale(.992);filter:blur(3px)}100%{opacity:1;transform:translate3d(0,0,0) scale(1);filter:blur(0)}}
+@keyframes ca-nav-pop{0%{opacity:.7;transform:translateY(3px) scale(.96)}65%{transform:translateY(-1px) scale(1.025)}100%{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes ca-card-reveal{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.page-transition{animation:ca-content-reveal .52s cubic-bezier(.18,.72,.22,1) both;transform-origin:50% 12%}
+.page-transition>.section-head{animation:ca-card-reveal .38s .04s both}
+.page-transition>.workspace-event-picker{animation:ca-card-reveal .42s .08s both}
+.page-transition>.layout{animation:ca-card-reveal .46s .12s both}
+.page-transition .event-row,.page-transition .hosted-event-row,.page-transition .registered-event-card,.page-transition .team-created-card{animation:ca-card-reveal .38s both}
+.page-transition .event-row:nth-child(2),.page-transition .hosted-event-row:nth-child(2),.page-transition .registered-event-card:nth-child(2),.page-transition .team-created-card:nth-child(2){animation-delay:.035s}
+.page-transition .event-row:nth-child(3),.page-transition .hosted-event-row:nth-child(3),.page-transition .registered-event-card:nth-child(3),.page-transition .team-created-card:nth-child(3){animation-delay:.07s}
+.page-transition .event-row:nth-child(4),.page-transition .hosted-event-row:nth-child(4),.page-transition .registered-event-card:nth-child(4),.page-transition .team-created-card:nth-child(4){animation-delay:.105s}
+.page-transition .event-row:nth-child(5),.page-transition .hosted-event-row:nth-child(5),.page-transition .registered-event-card:nth-child(5),.page-transition .team-created-card:nth-child(5){animation-delay:.14s}
+.top nav button.on,.mobile-nav button.on{animation:ca-nav-pop .28s cubic-bezier(.2,.8,.2,1) both}
+.top nav button:after{transition:opacity .22s ease,transform .22s ease}
+.mobile-nav button{transition:background .24s ease,color .24s ease,border-color .24s ease,box-shadow .24s ease,transform .2s cubic-bezier(.2,.8,.2,1)}
+.modal{animation:ca-card-reveal .28s cubic-bezier(.2,.8,.2,1) both}
+.notice{animation:ca-card-reveal .24s ease both}
+.team-hub-tile,.team-created-card,.team-dashboard-card,.registered-event-card,.event-row,.hosted-event-row{transition:transform .28s cubic-bezier(.2,.75,.25,1),border-color .25s ease,box-shadow .28s ease,background-color .25s ease}
+@media(max-width:680px){.page-transition{animation-duration:.42s}.page-transition>.section-head,.page-transition>.workspace-event-picker,.page-transition>.layout{animation-duration:.36s}}
+@media(prefers-reduced-motion:reduce){.page-transition,.page-transition>*,.page-transition .event-row,.page-transition .hosted-event-row,.page-transition .registered-event-card,.page-transition .team-created-card,.top nav button.on,.mobile-nav button.on,.modal,.notice{animation:none!important}}
