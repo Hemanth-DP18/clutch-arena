@@ -3,8 +3,8 @@ import { Router, type Request, type Response } from 'express';
 import { pool } from './db.js';
 
 type MatchSlot = { id:string; match:number; group:string; startsAt:string; label:string; status:'Scheduled'|'Delayed'|'Cancelled'|'Completed'; delayReason?:string; updatedAt?:string };
-type Squad = { id:string; name:string; roster:{name:string;uid:string}[]; createdAt:string; accessHash:string; codeHash:string };
-type Team = { id:string; squadId?:string; eventId:string; name:string; captain:string; roster:{name:string;uid:string}[]; slot:number; group?:string; createdAt:string; results:{placement:number;kills:number;confirmed:boolean}[]; accessHash:string };
+type Squad = { id:string; name:string; roster:{name:string;uid:string;playerId?:string;caid?:string}[]; createdAt:string; accessHash:string; codeHash:string };
+type Team = { id:string; squadId?:string; eventId:string; name:string; captain:string; roster:{name:string;uid:string;playerId?:string;caid?:string}[]; slot:number; group?:string; createdAt:string; results:{placement:number;kills:number;confirmed:boolean}[]; accessHash:string };
 type Event = { id:string; name:string; game:string; type:'Tournament'|'Scrim'; format?:'Solo'|'Squad'; mode:string; matches:number; groups:number; teamLimit:number; status:string; stage:string; createdAt:string; completedAt?:string; organizerHash:string; organizerPlayerId?:string; roomReleaseMinutes?:number; roomId?:string; roomPassword?:string; registrationOpensAt?:string; registrationClosesAt?:string; autoScheduleStartAt?:string; matchIntervalMinutes?:number; matchSchedule?:MatchSlot[] };
 const router = Router();
 const digest = (value:string) => createHash('sha256').update(value).digest('hex');
