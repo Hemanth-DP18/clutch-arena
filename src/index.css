@@ -637,3 +637,18 @@ button:focus-visible,a:focus-visible{outline:2px solid #c4b5fd;outline-offset:3p
 
 .tab-profile .hero,.tab-profile .stats,.tab-profile .app-about,.tab-profile .content>.section-head,.tab-profile .content>.layout,.tab-profile .content>.workspace-event-picker,.tab-profile .content>.promo,.tab-profile .promo{display:none!important}
 .tab-profile .content{margin-top:38px}
+
+
+/* Keep each navigation tab focused on its own workspace. */
+.tab-team .hero,.tab-team .stats,.tab-team .app-about,.tab-team .promo,
+.tab-team .content>.section-head,.tab-team .content>.workspace-event-picker{display:none!important}
+.tab-team .content{margin-top:24px}
+.tab-reports .hero,.tab-reports .stats,.tab-reports .app-about,.tab-reports .promo,
+.tab-reports .content>.section-head,.tab-reports .content>.layout,
+.tab-reports .content>.workspace-event-picker{display:none!important}
+.tab-reports .content{margin-top:38px}
+.created-squad-code .team-dashboard-actions{flex-wrap:wrap;justify-content:flex-end}
+@media(max-width:600px){
+  .created-squad-code{align-items:flex-start;gap:10px}
+  .created-squad-code .team-dashboard-actions{width:100%;justify-content:flex-start}
+}
