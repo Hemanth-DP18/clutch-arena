@@ -38,7 +38,7 @@ const requireSquad = (squad:Squad|undefined,token:unknown) => Boolean(squad && t
 const validRoster = (value:unknown):value is {name:string;uid:string}[] => Array.isArray(value) && value.length>=4 && value.length<=5 && value.every((p:any)=>typeof p?.name==='string'&&p.name.trim().length>=2&&p.name.trim().length<=30&&typeof p?.uid==='string'&&/^\d{5,20}$/.test(p.uid.trim())) && new Set(value.map((p:any)=>p.uid.trim())).size===value.length;
 const getEvent = async (id:string):Promise<Event|undefined> => {
   const result=await pool.query('SELECT id,data FROM ca_events WHERE id=$1',[id]);
-  return result.rows[0] ? {id:result.rows[0].id,...result.rows[0].data} as Event : undefined;
+  return result.rows[0] ? {id:result.rows[0].id,...result.rows[0].data,scoringMode:'ffws',eliminationPointsPerKill:1,placementPoints:[12,9,8,7,6,5,4,3,2,1,0,0]} as Event : undefined;
 };
 const getTeams = async (eventId:string):Promise<Team[]> => {
   const result=await pool.query('SELECT id,data FROM ca_teams WHERE event_id=$1 ORDER BY (data->>\'slot\')::int,id',[eventId]);
@@ -187,7 +187,7 @@ router.get('/events',async(req,res)=>{
   ]);
   const teamCounts=new Map<string,number>();
   const publicTeams=teams.rows.map(row=>{teamCounts.set(row.event_id,(teamCounts.get(row.event_id)||0)+1);const {accessHash,...data}=row.data;return {id:row.id,...data,roster:(data.roster||[]).map((p:any)=>({name:p.name}))};});
-  res.json({events:events.rows.map(row=>{const event={id:row.id,...row.data} as Event;return {...safeEvent(event),roomPublished:Boolean(event.type==='Tournament'?Object.keys(event.groupRooms||{}).length:event.roomId&&event.roomPassword),status:statusFor(event,teamCounts.get(row.id)||0)};}),teams:publicTeams,history:history.rows.map(row=>row.data)});
+  res.json({events:events.rows.map(row=>{const event={id:row.id,...row.data,scoringMode:'ffws',eliminationPointsPerKill:1,placementPoints:[12,9,8,7,6,5,4,3,2,1,0,0]} as Event;return {...safeEvent(event),roomPublished:Boolean(event.type==='Tournament'?Object.keys(event.groupRooms||{}).length:event.roomId&&event.roomPassword),status:statusFor(event,teamCounts.get(row.id)||0)};}),teams:publicTeams,history:history.rows.map(row=>row.data)});
 });
 
 router.post('/events',async(req,res)=>{
