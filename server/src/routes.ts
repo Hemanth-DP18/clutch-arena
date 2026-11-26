@@ -198,7 +198,7 @@ router.post('/events',async(req,res)=>{
   const format=input.format==='Solo'?'Solo':'Squad';
   const host=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));
   if(!host)return bad(res,'Sign in before creating an event.',401);
-  const event:Event={id:randomUUID(),organizerPlayerId:host.id,scoringMode:input.scoringMode==='custom'?'custom':'ffws',eliminationPointsPerKill:input.scoringMode==='custom'?Math.max(0,Math.min(10,Math.floor(Number(input.eliminationPointsPerKill)||0))):1,placementPoints:[12,9,8,7,6,5,4,3,2,1,0,0],name:input.name.trim().slice(0,100),game:input.game,type:input.type,format,mode:input.mode==='Clash Squad'?'Clash Squad':'Battle Royale',matches,groups,teamLimit:input.type==='Tournament'?groups*12:Math.max(0,Math.min(10000,Math.floor(Number(input.teamLimit)||0))),status:'Registration open',stage:input.type==='Tournament'?'Group Stage':'Practice Scrim',createdAt:new Date().toISOString(),organizerHash:digest(input.organizerToken),roomReleaseMinutes:10,matchIntervalMinutes:input.type==='Tournament'?5:2};
+  const event:Event={id:randomUUID(),organizerPlayerId:host.id,scoringMode:'ffws',eliminationPointsPerKill:1,placementPoints:[12,9,8,7,6,5,4,3,2,1,0,0],name:input.name.trim().slice(0,100),game:input.game,type:input.type,format,mode:input.mode==='Clash Squad'?'Clash Squad':'Battle Royale',matches,groups,teamLimit:input.type==='Tournament'?groups*12:Math.max(0,Math.min(10000,Math.floor(Number(input.teamLimit)||0))),status:'Registration open',stage:input.type==='Tournament'?'Group Stage':'Practice Scrim',createdAt:new Date().toISOString(),organizerHash:digest(input.organizerToken),roomReleaseMinutes:10,matchIntervalMinutes:input.type==='Tournament'?5:2};
   await pool.query('INSERT INTO ca_events(id,data) VALUES($1,$2::jsonb)',[event.id,JSON.stringify(event)]);
   res.status(201).json({event:safeEvent(event)});
 });
@@ -467,12 +467,10 @@ router.put('/events/:id',async(req,res)=>{
   if(!requireOrganizer(event,input.organizerToken)) return bad(res,'Organizer access denied',403);
   const updated={...event!};
   const teams=await getTeams(updated.id);
-  const scoringRequested=input.scoringMode!==undefined||input.eliminationPointsPerKill!==undefined||input.placementPoints!==undefined;
-  if(scoringRequested&&teams.some(team=>(team.results||[]).some(result=>result.confirmed)))return bad(res,'Scoring rules are locked after the first match result is confirmed.',409);
-  if(input.scoringMode!==undefined){if(!['ffws','custom'].includes(input.scoringMode))return bad(res,'Choose a valid scoring mode.');updated.scoringMode=input.scoringMode;}
-  if(input.eliminationPointsPerKill!==undefined){const value=Number(input.eliminationPointsPerKill);if(!Number.isInteger(value)||value<0||value>10)return bad(res,'Elimination points must be a whole number from 0 to 10.');updated.eliminationPointsPerKill=updated.scoringMode==='ffws'?1:value;}
-  if(input.placementPoints!==undefined){const table=input.placementPoints;if(!Array.isArray(table)||table.length!==12||table.some((v:any)=>!Number.isInteger(v)||v<0||v>100))return bad(res,'Placement scoring must contain exactly 12 non-negative whole-number values.');updated.placementPoints=table;}
-  if(updated.scoringMode==='ffws')updated.eliminationPointsPerKill=1;
+  // Official Free Fire scoring is server-enforced and cannot be customized.
+  updated.scoringMode='ffws';
+  updated.eliminationPointsPerKill=1;
+  updated.placementPoints=[12,9,8,7,6,5,4,3,2,1,0,0];
   if(typeof input.status==='string'&&['Registration open','Registration closed','In progress','Completed'].includes(input.status)){updated.status=input.status;if(input.status==='Completed'&&!event!.completedAt)updated.completedAt=new Date().toISOString();if(input.status!=='Completed')updated.completedAt=undefined;}
   if(updated.type==='Tournament'&&input.groups!==undefined){const groups=Math.max(1,Math.min(26,Math.floor(Number(input.groups)||1)));if(teams.length>groups*12)return bad(res,'Cannot reduce groups below the number needed for registered teams',409);updated.groups=groups;updated.teamLimit=groups*12;for(const team of teams){team.group=`Group ${String.fromCharCode(65+Math.floor((team.slot-1)/12))}`;await saveTeam(team);}}
   else if(updated.type==='Scrim'&&input.teamLimit!==undefined){const cap=Math.max(0,Math.min(10000,Math.floor(Number(input.teamLimit)||0)));if(cap>0&&teams.length>cap)return bad(res,'Cannot set a limit below the number of registered teams',409);updated.teamLimit=cap;}
