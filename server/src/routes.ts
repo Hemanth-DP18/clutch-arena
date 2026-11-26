@@ -376,6 +376,38 @@ router.get('/teams/:id',async(req,res)=>{
   res.json({squad:{id:squad!.id,name:squad!.name,roster:squad!.roster,createdAt:squad!.createdAt},registrations:registrations.rows.map(row=>({id:row.id,eventId:row.event_id,name:row.data.name,slot:row.data.slot,group:row.data.group}))});
 });
 
+router.post('/events/:id/teams/register-squad',async(req,res)=>{
+  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));
+  if(!player)return bad(res,'Sign in before registering for an event.',401);
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const eventRow=await client.query('SELECT id,data FROM ca_events WHERE id=$1 FOR UPDATE',[req.params.id]);
+    if(!eventRow.rows[0]){await client.query('ROLLBACK');return bad(res,'Event not found.',404);}
+    const event={id:eventRow.rows[0].id,...eventRow.rows[0].data} as Event;
+    if(event.format==='Solo'){await client.query('ROLLBACK');return bad(res,'This is a solo event. Register with your player profile.',409);}
+    const squadRow=await client.query('SELECT id,data FROM ca_squads WHERE id=$1 FOR UPDATE',[String(req.body?.squadId||'')]);
+    if(!squadRow.rows[0]){await client.query('ROLLBACK');return bad(res,'Team not found. Create or join a team first.',404);}
+    const squad={id:squadRow.rows[0].id,...squadRow.rows[0].data} as any;
+    if(squad.ownerId!==player.id){await client.query('ROLLBACK');return bad(res,'Only the team captain can register this squad.',403);}
+    if(!validRoster(squad.roster)){await client.query('ROLLBACK');return bad(res,'Your team needs 4–5 players with valid, unique game UIDs before registration.');}
+    const teams=await getTeams(event.id);
+    const current=statusFor(event,teams.length);
+    if(current!=='Registration open'){await client.query('ROLLBACK');return bad(res,current==='Registration scheduled'?'Registration has not opened yet':'Registration is closed',409);}
+    if(event.teamLimit>0&&teams.length>=event.teamLimit){await client.query('ROLLBACK');return bad(res,'This event has reached its team registration limit.',409);}
+    if(teams.some(t=>t.squadId===squad.id)){await client.query('ROLLBACK');return bad(res,'This team is already registered for this event.',409);}
+    if(teams.some(t=>t.name.toLowerCase()===String(squad.name).toLowerCase())){await client.query('ROLLBACK');return bad(res,'A team with this name is already registered for this event.',409);}
+    const playerUids=new Set(squad.roster.map((p:any)=>p.uid));
+    if(teams.some(t=>(t.roster||[]).some(p=>playerUids.has(p.uid)))){await client.query('ROLLBACK');return bad(res,'One or more players are already registered with another team in this event.',409);}
+    const slot=teams.length+1;const accessToken=randomBytes(32).toString('hex');
+    const team:Team={id:randomUUID(),squadId:squad.id,eventId:event.id,name:squad.name,captain:squad.roster[0].name,roster:squad.roster,slot,group:event.type==='Tournament'?'Group '+String.fromCharCode(65+Math.floor(teams.length/12)):undefined,createdAt:new Date().toISOString(),results:Array.from({length:event.matches},()=>({placement:0,kills:0,confirmed:false})),accessHash:digest(accessToken)};
+    await client.query('INSERT INTO ca_teams(id,event_id,data) VALUES($1,$2,$3::jsonb)',[team.id,event.id,JSON.stringify(team)]);
+    await client.query('UPDATE ca_squads SET updated_at=now() WHERE id=$1',[squad.id]);
+    await client.query('COMMIT');
+    res.status(201).json({team:{id:team.id,squadId:squad.id,name:team.name,eventId:event.id,slot:team.slot,group:team.group},accessToken});
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+});
+
 router.post('/events/:id/teams/register-code',async(req,res)=>{
   const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));if(!player)return bad(res,'Sign in before registering for an event.',401);
   const event=await getEvent(req.params.id);const input=req.body||{};
