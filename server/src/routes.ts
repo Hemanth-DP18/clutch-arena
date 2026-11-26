@@ -252,7 +252,7 @@ router.post('/teams',async(req,res)=>{
   res.status(201).json({squad:{id,name,roster,createdAt:data.createdAt,role:'Captain',inviteCode:code}});
 });
 router.delete('/teams/:id',async(req,res)=>{
-  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\\s+/i,''));
+  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));
   if(!player)return bad(res,'Sign in before deleting a team.',401);
   const client=await pool.connect();
   try{
