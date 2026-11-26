@@ -406,17 +406,13 @@ router.post('/events/:id/teams/register-code',async(req,res)=>{
 router.post('/events/:id/organizer-room',async(req,res)=>{
   const event=await getEvent(req.params.id);
   if(!requireOrganizer(event,req.body?.organizerToken)) return bad(res,'Organizer access denied',403);
-  res.json({roomId:event!.roomId||'',roomPassword:event!.roomPassword||''});
+  res.json({roomId:event!.roomId||'',roomPassword:event!.roomPassword||'',groupRooms:event!.groupRooms||{},roomReleaseMinutes:event!.roomReleaseMinutes??10});
 });
 
 router.put('/events/:id/room',async(req,res)=>{
   const event=await getEvent(req.params.id);
   if(!requireOrganizer(event,req.body?.organizerToken)) return bad(res,'Organizer access denied',403);
-  const roomId=String(req.body.roomId||'').trim().slice(0,80),roomPassword=String(req.body.roomPassword||'').trim().slice(0,80);
-  if(!roomId||!roomPassword) return bad(res,'Enter both the room ID and room password');
-  event!.roomId=roomId;event!.roomPassword=roomPassword;event!.roomReleaseMinutes=Math.max(0,Math.min(120,Math.floor(Number(req.body.roomReleaseMinutes)||0)));
-  await saveEvent(event!);
-  res.json({ok:true,roomId,roomPassword,roomReleaseMinutes:event!.roomReleaseMinutes});
+  if(event!.type==='Tournament'){const rooms=req.body.groupRooms&&typeof req.body.groupRooms==='object'?req.body.groupRooms:{};const clean:Record<string,{roomId:string;roomPassword:string}>={};for(const [group,value] of Object.entries(rooms) as [string,any][]){const id=String(value?.roomId||'').trim().slice(0,80),pw=String(value?.roomPassword||'').trim().slice(0,80);if((id&&!pw)||(!id&&pw))return bad(res,'Enter both room credentials for '+group+'.');if(id&&pw)clean[group.slice(0,30)]={roomId:id,roomPassword:pw};}if(!Object.keys(clean).length)return bad(res,'Add room credentials for at least one group.');event!.groupRooms=clean;event!.roomId=undefined;event!.roomPassword=undefined;}else{const id=String(req.body.roomId||'').trim().slice(0,80),pw=String(req.body.roomPassword||'').trim().slice(0,80);if(!id||!pw)return bad(res,'Enter both the room ID and room password');event!.roomId=id;event!.roomPassword=pw;}event!.roomReleaseMinutes=Math.max(0,Math.min(120,Math.floor(Number(req.body.roomReleaseMinutes??10)||0)));await saveEvent(event!);res.json({ok:true,roomReleaseMinutes:event!.roomReleaseMinutes});
 });
 
 router.delete('/events/:id',async(req,res)=>{
@@ -484,13 +480,13 @@ router.post('/events/:id/room',async(req,res)=>{
   if(!event||!input.teamId||!input.accessToken)return bad(res,'Team access is required',403);
   const teams=await getTeams(event.id);const team=teams.find(t=>t.id===input.teamId);
   if(!requireTeam(team,event.id,input.accessToken))return bad(res,'Team access denied',403);
-  if(!event.roomId||!event.roomPassword)return bad(res,'The manager has not published room details yet',404);
+  const group=team!.group||'All teams';const credentials=event.type==='Tournament'?(event.groupRooms||{})[group]:{roomId:event.roomId,roomPassword:event.roomPassword};if(!credentials?.roomId||!credentials?.roomPassword)return bad(res,'The manager has not published room details for your group yet',404);
   const eligible=(event.matchSchedule||[]).filter(s=>s.group===(team!.group||'All teams')&&['Scheduled','Delayed'].includes(s.status)).sort((a,b)=>new Date(a.startsAt).getTime()-new Date(b.startsAt).getTime());
   if(!eligible.length)return bad(res,'Your match schedule is not available yet',404);
   const release=Math.max(0,Math.min(120,Number(event.roomReleaseMinutes)||0));const now=Date.now();
   const next=eligible.find(s=>now>=new Date(s.startsAt).getTime()-release*60000);
   if(!next){const unlock=new Date(new Date(eligible[0].startsAt).getTime()-release*60000);return bad(res,`Room ID and password unlock at ${unlock.toLocaleString()}`,403);}
-  res.json({room:{roomId:event.roomId,roomPassword:event.roomPassword,schedule:eligible.filter(s=>s.id===next.id)}});
+  res.json({room:{roomId:credentials.roomId,roomPassword:credentials.roomPassword,schedule:eligible.filter(s=>s.id===next.id)}});
 });
 
 export default router;
