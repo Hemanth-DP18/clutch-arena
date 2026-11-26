@@ -4,8 +4,8 @@ import { pool } from './db.js';
 
 type MatchSlot = { id:string; match:number; group:string; startsAt:string; label:string; status:'Scheduled'|'Delayed'|'Cancelled'|'Completed'; delayReason?:string; updatedAt?:string };
 type Squad = { id:string; name:string; roster:{name:string;uid:string;playerId?:string;caid?:string}[]; createdAt:string; accessHash:string; codeHash:string };
-type Team = { id:string; squadId?:string; eventId:string; name:string; captain:string; roster:{name:string;uid:string;playerId?:string;caid?:string}[]; slot:number; group?:string; createdAt:string; results:{placement:number;kills:number;confirmed:boolean}[]; accessHash:string };
-type Event = { id:string; name:string; game:string; type:'Tournament'|'Scrim'; format?:'Solo'|'Squad'; mode:string; matches:number; groups:number; teamLimit:number; status:string; stage:string; createdAt:string; completedAt?:string; organizerHash:string; organizerPlayerId?:string; roomReleaseMinutes?:number; roomId?:string; roomPassword?:string; registrationOpensAt?:string; registrationClosesAt?:string; autoScheduleStartAt?:string; matchIntervalMinutes?:number; groupRooms?:Record<string,{roomId:string;roomPassword:string}>; matchSchedule?:MatchSlot[] };
+type Team = { id:string; lobbySquadNumbers?:Record<string,number>; squadId?:string; eventId:string; name:string; captain:string; roster:{name:string;uid:string;playerId?:string;caid?:string}[]; slot:number; group?:string; createdAt:string; results:{placement:number;kills:number;confirmed:boolean}[]; accessHash:string };
+type Event = { id:string; scoringMode?:'ffws'|'custom'; eliminationPointsPerKill?:number; placementPoints?:number[]; name:string; game:string; type:'Tournament'|'Scrim'; format?:'Solo'|'Squad'; mode:string; matches:number; groups:number; teamLimit:number; status:string; stage:string; createdAt:string; completedAt?:string; organizerHash:string; organizerPlayerId?:string; roomReleaseMinutes?:number; roomId?:string; roomPassword?:string; registrationOpensAt?:string; registrationClosesAt?:string; autoScheduleStartAt?:string; matchIntervalMinutes?:number; groupRooms?:Record<string,{roomId:string;roomPassword:string}>; matchSchedule?:MatchSlot[] };
 const router = Router();
 const digest = (value:string) => createHash('sha256').update(value).digest('hex');
 const makePasswordHash=(password:string,salt:string)=>scryptSync(password,salt,64).toString('hex');
@@ -75,8 +75,9 @@ const archiveEvent = async (event:Event,teams:Team[]) => {
   for(const team of teams) {
     if(!(team.results||[]).some(r=>r.confirmed) && event.status!=='Completed') continue;
     const completed=(team.results||[]).filter(r=>r.confirmed);
-    const points=[12,9,8,7,6,5,4,3,2,1,0,0];
-    const history={teamId:team.id,teamName:team.name,captain:team.captain,eventId:event.id,eventName:event.name,game:event.game,type:event.type,group:team.group,slot:team.slot,teamCreatedAt:team.createdAt,completedAt,results:team.results||[],kills:completed.reduce((n,r)=>n+Math.max(0,r.kills||0),0),booyahs:completed.filter(r=>r.placement===1).length,totalPoints:completed.reduce((n,r)=>n+(points[r.placement-1]||0)+Math.max(0,r.kills||0),0)};
+    const points=event.placementPoints||[12,9,8,7,6,5,4,3,2,1,0,0];
+    const eliminationPoints=event.eliminationPointsPerKill??1;
+    const history={teamId:team.id,teamName:team.name,captain:team.captain,eventId:event.id,eventName:event.name,game:event.game,type:event.type,group:team.group,slot:team.slot,teamCreatedAt:team.createdAt,completedAt,results:team.results||[],kills:completed.reduce((n,r)=>n+Math.max(0,r.kills||0),0),booyahs:completed.filter(r=>r.placement===1).length,totalPoints:completed.reduce((n,r)=>n+(points[r.placement-1]??0)+Math.max(0,r.kills||0)*eliminationPoints,0)};
     const id=`h_${event.id.replace(/[^a-zA-Z0-9_-]/g,'_')}_${team.id.replace(/[^a-zA-Z0-9_-]/g,'_')}`.slice(0,180);
     await pool.query('INSERT INTO ca_team_history(id,event_id,team_id,data) VALUES($1,$2,$3,$4::jsonb) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data',[id,event.id,team.id,JSON.stringify(history)]);
   }
@@ -88,11 +89,12 @@ export async function cleanupCompletedEvents() {
     const event={id:row.id,...row.data} as Event;
     const teams=await getTeams(event.id);
     await archiveEvent(event,teams);
-    const points=[12,9,8,7,6,5,4,3,2,1,0,0];
+    const points=event.placementPoints||[12,9,8,7,6,5,4,3,2,1,0,0];
+    const eliminationPoints=event.eliminationPointsPerKill??1;
     const standings=teams.map(team=>{
       const confirmed=(team.results||[]).filter(r=>r.confirmed);
       const kills=confirmed.reduce((n,r)=>n+Math.max(0,r.kills||0),0);
-      const totalPoints=confirmed.reduce((n,r)=>n+(points[r.placement-1]||0)+Math.max(0,r.kills||0),0);
+      const totalPoints=confirmed.reduce((n,r)=>n+(points[r.placement-1]??0)+Math.max(0,r.kills||0)*eliminationPoints,0);
       return {teamName:team.name,captain:team.captain,slot:team.slot,group:team.group||'',kills,booyahs:confirmed.filter(r=>r.placement===1).length,totalPoints};
     }).sort((a,b)=>b.totalPoints-a.totalPoints||b.kills-a.kills);
     if(event.organizerPlayerId) {
@@ -196,7 +198,7 @@ router.post('/events',async(req,res)=>{
   const format=input.format==='Solo'?'Solo':'Squad';
   const host=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));
   if(!host)return bad(res,'Sign in before creating an event.',401);
-  const event:Event={id:randomUUID(),organizerPlayerId:host.id,name:input.name.trim().slice(0,100),game:input.game,type:input.type,format,mode:input.mode==='Clash Squad'?'Clash Squad':'Battle Royale',matches,groups,teamLimit:input.type==='Tournament'?groups*12:Math.max(0,Math.min(10000,Math.floor(Number(input.teamLimit)||0))),status:'Registration open',stage:input.type==='Tournament'?'Group Stage':'Practice Scrim',createdAt:new Date().toISOString(),organizerHash:digest(input.organizerToken),roomReleaseMinutes:10,matchIntervalMinutes:input.type==='Tournament'?5:2};
+  const event:Event={id:randomUUID(),organizerPlayerId:host.id,scoringMode:input.scoringMode==='custom'?'custom':'ffws',eliminationPointsPerKill:input.scoringMode==='custom'?Math.max(0,Math.min(10,Math.floor(Number(input.eliminationPointsPerKill)||0))):1,placementPoints:[12,9,8,7,6,5,4,3,2,1,0,0],name:input.name.trim().slice(0,100),game:input.game,type:input.type,format,mode:input.mode==='Clash Squad'?'Clash Squad':'Battle Royale',matches,groups,teamLimit:input.type==='Tournament'?groups*12:Math.max(0,Math.min(10000,Math.floor(Number(input.teamLimit)||0))),status:'Registration open',stage:input.type==='Tournament'?'Group Stage':'Practice Scrim',createdAt:new Date().toISOString(),organizerHash:digest(input.organizerToken),roomReleaseMinutes:10,matchIntervalMinutes:input.type==='Tournament'?5:2};
   await pool.query('INSERT INTO ca_events(id,data) VALUES($1,$2::jsonb)',[event.id,JSON.stringify(event)]);
   res.status(201).json({event:safeEvent(event)});
 });
@@ -430,8 +432,14 @@ router.put('/events/:id',async(req,res)=>{
   const event=await getEvent(req.params.id); const input=req.body||{};
   if(!requireOrganizer(event,input.organizerToken)) return bad(res,'Organizer access denied',403);
   const updated={...event!};
-  if(typeof input.status==='string'&&['Registration open','Registration closed','In progress','Completed'].includes(input.status)){updated.status=input.status;if(input.status==='Completed'&&!event!.completedAt)updated.completedAt=new Date().toISOString();if(input.status!=='Completed')updated.completedAt=undefined;}
   const teams=await getTeams(updated.id);
+  const scoringRequested=input.scoringMode!==undefined||input.eliminationPointsPerKill!==undefined||input.placementPoints!==undefined;
+  if(scoringRequested&&teams.some(team=>(team.results||[]).some(result=>result.confirmed)))return bad(res,'Scoring rules are locked after the first match result is confirmed.',409);
+  if(input.scoringMode!==undefined){if(!['ffws','custom'].includes(input.scoringMode))return bad(res,'Choose a valid scoring mode.');updated.scoringMode=input.scoringMode;}
+  if(input.eliminationPointsPerKill!==undefined){const value=Number(input.eliminationPointsPerKill);if(!Number.isInteger(value)||value<0||value>10)return bad(res,'Elimination points must be a whole number from 0 to 10.');updated.eliminationPointsPerKill=updated.scoringMode==='ffws'?1:value;}
+  if(input.placementPoints!==undefined){const table=input.placementPoints;if(!Array.isArray(table)||table.length!==12||table.some((v:any)=>!Number.isInteger(v)||v<0||v>100))return bad(res,'Placement scoring must contain exactly 12 non-negative whole-number values.');updated.placementPoints=table;}
+  if(updated.scoringMode==='ffws')updated.eliminationPointsPerKill=1;
+  if(typeof input.status==='string'&&['Registration open','Registration closed','In progress','Completed'].includes(input.status)){updated.status=input.status;if(input.status==='Completed'&&!event!.completedAt)updated.completedAt=new Date().toISOString();if(input.status!=='Completed')updated.completedAt=undefined;}
   if(updated.type==='Tournament'&&input.groups!==undefined){const groups=Math.max(1,Math.min(26,Math.floor(Number(input.groups)||1)));if(teams.length>groups*12)return bad(res,'Cannot reduce groups below the number needed for registered teams',409);updated.groups=groups;updated.teamLimit=groups*12;for(const team of teams){team.group=`Group ${String.fromCharCode(65+Math.floor((team.slot-1)/12))}`;await saveTeam(team);}}
   else if(updated.type==='Scrim'&&input.teamLimit!==undefined){const cap=Math.max(0,Math.min(10000,Math.floor(Number(input.teamLimit)||0)));if(cap>0&&teams.length>cap)return bad(res,'Cannot set a limit below the number of registered teams',409);updated.teamLimit=cap;}
   for(const key of ['registrationOpensAt','registrationClosesAt','autoScheduleStartAt'] as const) if(input[key]!==undefined) (updated as any)[key]=input[key]||undefined;
@@ -462,7 +470,8 @@ router.put('/events/:id/teams/:teamId',async(req,res)=>{
   const hasResults=Array.isArray(input.results);const results=hasResults?input.results.slice(0,event!.matches):[];
   const maxPlacement=event!.type==='Tournament'?teams.filter(t=>t.group===team.group).length:teams.length;
   if(input.slot!==undefined){const slot=Number(input.slot),capacity=event!.type==='Tournament'?Math.max(1,event!.groups*12):(Number(event!.teamLimit)||10000);if(!Number.isInteger(slot)||slot<1||slot>capacity)return bad(res,'Choose a slot within the event capacity');if(teams.some(t=>t.id!==team.id&&t.slot===slot))return bad(res,'That slot is already assigned',409);team.slot=slot;team.group=event!.type==='Tournament'?`Group ${String.fromCharCode(65+Math.floor((slot-1)/12))}`:undefined;}
-  if(!hasResults&&input.slot===undefined)return bad(res,'No team update was supplied');
+  if(input.lobbySquadNumber!==undefined){const matchNumber=Number(input.matchNumber);const squadNumber=Number(input.lobbySquadNumber);if(!Number.isInteger(matchNumber)||matchNumber<1||matchNumber>event!.matches||!Number.isInteger(squadNumber)||squadNumber<1||squadNumber>12)return bad(res,'Choose a match and an in-game squad number from 1 to 12.');const key=String(matchNumber);const duplicate=teams.find(t=>t.id!==team.id&&(event!.type!=='Tournament'||t.group===team.group)&&Number(t.lobbySquadNumbers?.[key])===squadNumber);if(duplicate)return bad(res,'That in-game squad number is already mapped to '+duplicate.name+' for this match.',409);team.lobbySquadNumbers={...(team.lobbySquadNumbers||{}),[key]:squadNumber};}
+  if(!hasResults&&input.slot===undefined&&input.lobbySquadNumber===undefined)return bad(res,'No team update was supplied');
   if(hasResults&&(!results.length||results.some((r:any)=>r?.confirmed&&(!Number.isInteger(Number(r.placement))||Number(r.placement)<1||Number(r.placement)>Math.max(1,maxPlacement)||!Number.isInteger(Number(r.kills))||Number(r.kills)<0||Number(r.kills)>999))))return bad(res,'Confirmed match results need a valid placement and kills value');
   const previousResults=team.results.map(r=>({...r}));
   if(hasResults)team.results=team.results.map((old,i)=>results[i]?.confirmed?{placement:Number(results[i].placement),kills:Number(results[i].kills),confirmed:true}:old);
