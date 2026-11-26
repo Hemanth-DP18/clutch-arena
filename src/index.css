@@ -763,3 +763,13 @@ body{overscroll-behavior-y:contain;-webkit-tap-highlight-color:transparent}
 button{transition:transform .18s ease,filter .18s ease,box-shadow .18s ease}
 button:active{transform:scale(.985)}
 @media(prefers-reduced-motion:reduce){.page-transition{animation:none;will-change:auto}.team-hub-tile,.team-created-card,.event-row,.panel,button{transition:none!important}}
+
+
+/* Fixed official scoring reference */
+.official-scoring-table{display:grid;grid-template-columns:1fr 1fr;max-width:390px;margin:14px 0;border:1px solid #ffffff1c;border-radius:12px;overflow:hidden;background:#0c1220}
+.official-scoring-table>div{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 13px;border-bottom:1px solid #ffffff12;font-size:12px}
+.official-scoring-table>div:nth-child(odd){background:#ffffff06}
+.official-scoring-table>div:first-child{background:#a78bfa1c;color:#ddd2ff}
+.official-scoring-table>div:last-child{grid-column:1/-1;border-bottom:0;background:#a78bfa14}
+.official-scoring-table b{font-weight:800}
+.scoring-official-note{border-color:#a78bfa55;background:#a78bfa0d}
