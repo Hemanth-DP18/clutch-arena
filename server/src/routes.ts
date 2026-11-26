@@ -251,6 +251,22 @@ router.post('/teams',async(req,res)=>{
   await pool.query('INSERT INTO ca_squads(id,code_hash,data) VALUES($1,$2,$3::jsonb)',[id,digest(code),JSON.stringify(data)]);
   res.status(201).json({squad:{id,name,roster,createdAt:data.createdAt,role:'Captain',inviteCode:code}});
 });
+router.delete('/teams/:id',async(req,res)=>{
+  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\\s+/i,''));
+  if(!player)return bad(res,'Sign in before deleting a team.',401);
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const found=await client.query('SELECT id,data FROM ca_squads WHERE id=$1 FOR UPDATE',[req.params.id]);
+    if(!found.rows[0]){await client.query('ROLLBACK');return bad(res,'Team not found.',404);}
+    if(found.rows[0].data.ownerId!==player.id){await client.query('ROLLBACK');return bad(res,'Only the team captain can delete this team.',403);}
+    const removed=await client.query("DELETE FROM ca_teams WHERE data->>'squadId'=$1 RETURNING id",[req.params.id]);
+    await client.query('DELETE FROM ca_squads WHERE id=$1',[req.params.id]);
+    await client.query('COMMIT');
+    res.json({ok:true,deletedTeamIds:removed.rows.map(row=>row.id),deletedRegistrations:removed.rowCount||0});
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+});
+
 router.post('/teams/:id/invite',async(req,res)=>{
   const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));
   if(!player)return bad(res,'Sign in first.',401);
