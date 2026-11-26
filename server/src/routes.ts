@@ -256,7 +256,7 @@ router.post('/teams',async(req,res)=>{
   res.status(201).json({squad:{id,name,logo,roster,createdAt:data.createdAt,role:'Captain',inviteCode:code}});
 });
 router.delete('/teams/:id/leave',async(req,res)=>{
-  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\\s+/i,''));
+  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));
   if(!player)return bad(res,'Sign in before leaving a team.',401);
   const client=await pool.connect();
   try{
