@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from './lib/api';
-import { Activity, ArrowRight, Award, BarChart3, CalendarDays, Check, ChevronRight, Copy, Crown, Download, Gamepad2, Plus, RefreshCw, ShieldCheck, Swords, Trophy, Users, X } from 'lucide-react';
+import { Activity, ArrowLeft, ArrowRight, Award, BarChart3, CalendarDays, Check, ChevronRight, Copy, Crown, Download, Gamepad2, History, Plus, RefreshCw, ShieldCheck, Swords, Trophy, Users, X } from 'lucide-react';
 
 type Game = 'Free Fire India' | 'Free Fire MAX';
 type MatchSlot = { id:string; match:number; group:string; startsAt:string; label:string; status:'Scheduled'|'Delayed'|'Cancelled'|'Completed'; delayReason?:string; updatedAt?:string };
