@@ -238,19 +238,48 @@ router.get('/players/teams',async(req,res)=>{
   const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));
   if(!player)return bad(res,'Sign in to view your teams.',401);
   const result=await pool.query("SELECT id,data FROM ca_squads WHERE data->>'ownerId'=$1 OR data @> $2::jsonb ORDER BY created_at DESC",[player.id,JSON.stringify({roster:[{playerId:player.id}]})]);
-  res.json({squads:result.rows.map(row=>({id:row.id,name:row.data.name,roster:row.data.roster,createdAt:row.data.createdAt,role:row.data.ownerId===player.id?'Captain':'Player',inviteCode:row.data.ownerId===player.id?row.data.inviteCode||'':undefined}))});
+  res.json({squads:result.rows.map(row=>({id:row.id,name:row.data.name,logo:row.data.logo||'',roster:row.data.roster,createdAt:row.data.createdAt,role:row.data.ownerId===player.id?'Captain':'Player',inviteCode:row.data.ownerId===player.id?row.data.inviteCode||'':undefined}))});
 });
 router.post('/teams',async(req,res)=>{
   const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));
   if(!player)return bad(res,'Sign in before creating a team.',401);
   const name=String(req.body?.name||'').trim();
+  const uid=String(req.body?.uid||'').trim();
+  const logo=String(req.body?.logo||'');
   if(name.length<2||name.length>40)return bad(res,'Team name must be 2–40 characters.');
+  if(!validPlayerUid(uid))return bad(res,'A valid game UID (5–20 digits) is required to create a team.');
+  if(logo && (!/^data:image\/(png|jpeg|webp);base64,/.test(logo)||logo.length>240000))return bad(res,'Team logo must be a PNG, JPG or WEBP image under 180 KB.');
   const id=randomUUID(),code='CA-'+randomBytes(4).toString('hex').toUpperCase();
-  const roster=[{playerId:player.id,name:player.displayName,uid:player.uid||'',caid:player.caid}];
-  const data={name,ownerId:player.id,roster,createdAt:new Date().toISOString(),inviteHash:digest(code),inviteCode:code};
+  const roster=[{playerId:player.id,name:player.displayName,uid,caid:player.caid}];
+  const data={name,logo,ownerId:player.id,roster,createdAt:new Date().toISOString(),inviteHash:digest(code),inviteCode:code};
   await pool.query('INSERT INTO ca_squads(id,code_hash,data) VALUES($1,$2,$3::jsonb)',[id,digest(code),JSON.stringify(data)]);
-  res.status(201).json({squad:{id,name,roster,createdAt:data.createdAt,role:'Captain',inviteCode:code}});
+  res.status(201).json({squad:{id,name,logo,roster,createdAt:data.createdAt,role:'Captain',inviteCode:code}});
 });
+router.delete('/teams/:id/leave',async(req,res)=>{
+  const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\\s+/i,''));
+  if(!player)return bad(res,'Sign in before leaving a team.',401);
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const found=await client.query('SELECT id,data FROM ca_squads WHERE id=$1 FOR UPDATE',[req.params.id]);
+    if(!found.rows[0]){await client.query('ROLLBACK');return bad(res,'Team not found.',404);}
+    const data=found.rows[0].data;
+    if(data.ownerId===player.id){await client.query('ROLLBACK');return bad(res,'The captain cannot leave their own team. Delete the team if you no longer want it.',409);}
+    const before=(data.roster||[]).length;
+    data.roster=(data.roster||[]).filter((member:any)=>member.playerId!==player.id);
+    if(data.roster.length===before){await client.query('ROLLBACK');return bad(res,'You are not a member of this team.',404);}
+    await client.query('UPDATE ca_squads SET data=$2::jsonb,updated_at=now() WHERE id=$1',[req.params.id,JSON.stringify(data)]);
+    const registrations=await client.query("SELECT id,data FROM ca_teams WHERE data->>'squadId'=$1",[req.params.id]);
+    for(const registration of registrations.rows){
+      const team=registration.data;
+      team.roster=(team.roster||[]).filter((member:any)=>member.playerId!==player.id);
+      await client.query('UPDATE ca_teams SET data=$2::jsonb,updated_at=now() WHERE id=$1',[registration.id,JSON.stringify(team)]);
+    }
+    await client.query('COMMIT');
+    res.json({ok:true,teamId:req.params.id});
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+});
+
 router.delete('/teams/:id',async(req,res)=>{
   const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));
   if(!player)return bad(res,'Sign in before deleting a team.',401);
@@ -284,6 +313,8 @@ router.post('/teams/join-by-caid',async(req,res)=>{
   const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));
   if(!player)return bad(res,'Sign in before joining a team.',401);
   const caid=String(req.body?.captainCaid||'').trim().toUpperCase();
+  const uid=String(req.body?.uid||'').trim();
+  if(!validPlayerUid(uid))return bad(res,'A valid game UID (5–20 digits) is required to join a team.');
   if(!/^CAID-[A-F0-9]{8}$/.test(caid))return bad(res,'Enter the captain’s valid CAID.');
   const captainResult=await pool.query("SELECT id,profile FROM ca_players WHERE upper(profile->>'caid')=$1",[caid]);
   if(!captainResult.rows[0])return bad(res,'No player account was found for that CAID.',404);
@@ -294,15 +325,17 @@ router.post('/teams/join-by-caid',async(req,res)=>{
   const data=squadResult.rows[0].data;
   if((data.roster||[]).some((p:any)=>p.playerId===player.id))return bad(res,'You are already on this team.',409);
   if((data.roster||[]).length>=5)return bad(res,'This team already has five players.',409);
-  data.roster.push({playerId:player.id,name:player.displayName,uid:player.uid||'',caid:player.caid});
+  data.roster.push({playerId:player.id,name:player.displayName,uid,caid:player.caid});
   await pool.query('UPDATE ca_squads SET data=$2::jsonb,updated_at=now() WHERE id=$1',[squadResult.rows[0].id,JSON.stringify(data)]);
-  res.status(201).json({squad:{id:squadResult.rows[0].id,name:data.name,roster:data.roster,createdAt:data.createdAt,role:'Player'}});
+  res.status(201).json({squad:{id:squadResult.rows[0].id,name:data.name,logo:data.logo||'',roster:data.roster,createdAt:data.createdAt,role:'Player'}});
 });
 
 router.post('/teams/join',async(req,res)=>{
   const player=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));
   if(!player)return bad(res,'Sign in before joining a team.',401);
   const code=String(req.body?.inviteCode||'').trim().toUpperCase().replace(/\\s+/g,'');
+  const uid=String(req.body?.uid||'').trim();
+  if(!validPlayerUid(uid))return bad(res,'A valid game UID (5–20 digits) is required to join a team.');
   if(!/^CA-[A-F0-9]{8}$/.test(code))return bad(res,'Enter a valid team invite code.');
   const result=await pool.query('SELECT id,data FROM ca_squads WHERE code_hash=$1',[digest(code)]);
   if(!result.rows[0])return bad(res,'Invite code not found or expired.',404);
@@ -310,10 +343,10 @@ router.post('/teams/join',async(req,res)=>{
   if(data.roster.some((p:any)=>p.playerId===player.id))return bad(res,'You are already on this team.',409);
   if(data.roster.some((p:any)=>p.uid===player.uid))return bad(res,'This player UID is already on the team.',409);
   if(data.roster.length>=5)return bad(res,'This team is full.',409);
-  data.roster.push({playerId:player.id,name:player.displayName,uid:player.uid});
+  data.roster.push({playerId:player.id,name:player.displayName,uid,caid:player.caid});
   data.inviteHash=null;data.inviteCode='';
   await pool.query('UPDATE ca_squads SET code_hash=$2,data=$3::jsonb,updated_at=now() WHERE id=$1',[result.rows[0].id,digest(randomBytes(32).toString('hex')),JSON.stringify(data)]);
-  res.status(201).json({squad:{id:result.rows[0].id,name:data.name,roster:data.roster,createdAt:data.createdAt,role:'Player'}});
+  res.status(201).json({squad:{id:result.rows[0].id,name:data.name,logo:data.logo||'',roster:data.roster,createdAt:data.createdAt,role:'Player'}});
 });
 
 router.post('/teams',async(req,res)=>{
