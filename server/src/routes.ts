@@ -330,6 +330,8 @@ router.post('/teams/join-by-caid',async(req,res)=>{
   if((data.roster||[]).length>=5)return bad(res,'This team already has five players.',409);
   data.roster.push({playerId:player.id,name:player.displayName,uid,caid:player.caid});
   await pool.query('UPDATE ca_squads SET data=$2::jsonb,updated_at=now() WHERE id=$1',[squadResult.rows[0].id,JSON.stringify(data)]);
+  const existingRegistrations=await pool.query("SELECT id,data FROM ca_teams WHERE data->>'squadId'=$1",[squadResult.rows[0].id]);
+  for(const registration of existingRegistrations.rows){const registeredTeam=registration.data;registeredTeam.roster=data.roster;await pool.query('UPDATE ca_teams SET data=$2::jsonb,updated_at=now() WHERE id=$1',[registration.id,JSON.stringify(registeredTeam)]);}
   res.status(201).json({squad:{id:squadResult.rows[0].id,name:data.name,logo:data.logo||'',roster:data.roster,createdAt:data.createdAt,role:'Player'}});
 });
 
