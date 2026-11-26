@@ -324,6 +324,7 @@ router.post('/teams/join-by-caid',async(req,res)=>{
   if(!squadResult.rows[0])return bad(res,'That player has not created a team yet.',404);
   const data=squadResult.rows[0].data;
   if((data.roster||[]).some((p:any)=>p.playerId===player.id))return bad(res,'You are already on this team.',409);
+  if((data.roster||[]).some((p:any)=>p.uid===uid))return bad(res,'This game UID is already used by a teammate.',409);
   if((data.roster||[]).length>=5)return bad(res,'This team already has five players.',409);
   data.roster.push({playerId:player.id,name:player.displayName,uid,caid:player.caid});
   await pool.query('UPDATE ca_squads SET data=$2::jsonb,updated_at=now() WHERE id=$1',[squadResult.rows[0].id,JSON.stringify(data)]);
@@ -341,7 +342,7 @@ router.post('/teams/join',async(req,res)=>{
   if(!result.rows[0])return bad(res,'Invite code not found or expired.',404);
   const data=result.rows[0].data;
   if(data.roster.some((p:any)=>p.playerId===player.id))return bad(res,'You are already on this team.',409);
-  if(data.roster.some((p:any)=>p.uid===player.uid))return bad(res,'This player UID is already on the team.',409);
+  if(data.roster.some((p:any)=>p.uid===uid))return bad(res,'This game UID is already used by a teammate.',409);
   if(data.roster.length>=5)return bad(res,'This team is full.',409);
   data.roster.push({playerId:player.id,name:player.displayName,uid,caid:player.caid});
   data.inviteHash=null;data.inviteCode='';
