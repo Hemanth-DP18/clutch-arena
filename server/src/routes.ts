@@ -5,7 +5,7 @@ import { pool } from './db.js';
 type MatchSlot = { id:string; match:number; group:string; startsAt:string; label:string; status:'Scheduled'|'Delayed'|'Cancelled'|'Completed'; delayReason?:string; updatedAt?:string };
 type Squad = { id:string; name:string; roster:{name:string;uid:string;playerId?:string;caid?:string}[]; createdAt:string; accessHash:string; codeHash:string };
 type Team = { id:string; squadId?:string; eventId:string; name:string; captain:string; roster:{name:string;uid:string;playerId?:string;caid?:string}[]; slot:number; group?:string; createdAt:string; results:{placement:number;kills:number;confirmed:boolean}[]; accessHash:string };
-type Event = { id:string; name:string; game:string; type:'Tournament'|'Scrim'; format?:'Solo'|'Squad'; mode:string; matches:number; groups:number; teamLimit:number; status:string; stage:string; createdAt:string; completedAt?:string; organizerHash:string; organizerPlayerId?:string; roomReleaseMinutes?:number; roomId?:string; roomPassword?:string; registrationOpensAt?:string; registrationClosesAt?:string; autoScheduleStartAt?:string; matchIntervalMinutes?:number; matchSchedule?:MatchSlot[] };
+type Event = { id:string; name:string; game:string; type:'Tournament'|'Scrim'; format?:'Solo'|'Squad'; mode:string; matches:number; groups:number; teamLimit:number; status:string; stage:string; createdAt:string; completedAt?:string; organizerHash:string; organizerPlayerId?:string; roomReleaseMinutes?:number; roomId?:string; roomPassword?:string; registrationOpensAt?:string; registrationClosesAt?:string; autoScheduleStartAt?:string; matchIntervalMinutes?:number; groupRooms?:Record<string,{roomId:string;roomPassword:string}>; matchSchedule?:MatchSlot[] };
 const router = Router();
 const digest = (value:string) => createHash('sha256').update(value).digest('hex');
 const makePasswordHash=(password:string,salt:string)=>scryptSync(password,salt,64).toString('hex');
@@ -29,7 +29,7 @@ const playerFromToken=async(token:unknown)=>{
   return {id:row.id,username:row.username,...profile};
 };
 const bad = (res:Response,message:string,status=400) => res.status(status).json({error:message});
-const safeEvent = (event:Event) => { const {organizerHash,roomId,roomPassword,...visible}=event; return visible; };
+const safeEvent = (event:Event) => { const {organizerHash,roomId,roomPassword,groupRooms,...visible}=event; return visible; };
 const getSquad = async (id:string):Promise<Squad|undefined> => {
   const result=await pool.query('SELECT id,data,code_hash FROM ca_squads WHERE id=$1',[id]);
   return result.rows[0] ? {id:result.rows[0].id,...result.rows[0].data,codeHash:result.rows[0].code_hash} as Squad : undefined;
@@ -60,7 +60,7 @@ const makeSchedule = async (event:Event,teams:Team[]) => {
   if(!groups.length) return event;
   const configured=event.autoScheduleStartAt ? new Date(event.autoScheduleStartAt).getTime() : 0;
   const first=Math.max(Number.isFinite(configured)?configured:0,Date.now()+30*60*1000);
-  const interval=Math.max(15,Math.min(240,Math.floor(Number(event.matchIntervalMinutes)||30)))*60000;
+  const interval=(event.type==='Tournament'?Math.max(5,Math.min(240,Math.floor(Number(event.matchIntervalMinutes)||5))):Math.max(1,Math.min(2,Math.floor(Number(event.matchIntervalMinutes)||2))))*60000;
   const schedule:MatchSlot[]=[];
   for(let match=1;match<=event.matches;match++) for(const group of groups) {
     const safe=group.toLowerCase().replace(/[^a-z0-9]+/g,'-');
@@ -196,7 +196,7 @@ router.post('/events',async(req,res)=>{
   const format=input.format==='Solo'?'Solo':'Squad';
   const host=await playerFromToken(req.header('authorization')?.replace(/^Bearer\s+/i,''));
   if(!host)return bad(res,'Sign in before creating an event.',401);
-  const event:Event={id:randomUUID(),organizerPlayerId:host.id,name:input.name.trim().slice(0,100),game:input.game,type:input.type,format,mode:input.mode==='Clash Squad'?'Clash Squad':'Battle Royale',matches,groups,teamLimit:input.type==='Tournament'?groups*12:Math.max(0,Math.min(10000,Math.floor(Number(input.teamLimit)||0))),status:'Registration open',stage:'Open Qualifier',createdAt:new Date().toISOString(),organizerHash:digest(input.organizerToken)};
+  const event:Event={id:randomUUID(),organizerPlayerId:host.id,name:input.name.trim().slice(0,100),game:input.game,type:input.type,format,mode:input.mode==='Clash Squad'?'Clash Squad':'Battle Royale',matches,groups,teamLimit:input.type==='Tournament'?groups*12:Math.max(0,Math.min(10000,Math.floor(Number(input.teamLimit)||0))),status:'Registration open',stage:input.type==='Tournament'?'Group Stage':'Practice Scrim',createdAt:new Date().toISOString(),organizerHash:digest(input.organizerToken),roomReleaseMinutes:10,matchIntervalMinutes:input.type==='Tournament'?5:2};
   await pool.query('INSERT INTO ca_events(id,data) VALUES($1,$2::jsonb)',[event.id,JSON.stringify(event)]);
   res.status(201).json({event:safeEvent(event)});
 });
@@ -439,7 +439,7 @@ router.put('/events/:id',async(req,res)=>{
   if(updated.type==='Tournament'&&input.groups!==undefined){const groups=Math.max(1,Math.min(26,Math.floor(Number(input.groups)||1)));if(teams.length>groups*12)return bad(res,'Cannot reduce groups below the number needed for registered teams',409);updated.groups=groups;updated.teamLimit=groups*12;for(const team of teams){team.group=`Group ${String.fromCharCode(65+Math.floor((team.slot-1)/12))}`;await saveTeam(team);}}
   else if(updated.type==='Scrim'&&input.teamLimit!==undefined){const cap=Math.max(0,Math.min(10000,Math.floor(Number(input.teamLimit)||0)));if(cap>0&&teams.length>cap)return bad(res,'Cannot set a limit below the number of registered teams',409);updated.teamLimit=cap;}
   for(const key of ['registrationOpensAt','registrationClosesAt','autoScheduleStartAt'] as const) if(input[key]!==undefined) (updated as any)[key]=input[key]||undefined;
-  if(input.matchIntervalMinutes!==undefined)updated.matchIntervalMinutes=Math.max(15,Math.min(240,Math.floor(Number(input.matchIntervalMinutes)||30)));
+  if(input.matchIntervalMinutes!==undefined)updated.matchIntervalMinutes=updated.type==='Tournament'?Math.max(5,Math.min(240,Math.floor(Number(input.matchIntervalMinutes)||5))):Math.max(1,Math.min(2,Math.floor(Number(input.matchIntervalMinutes)||2));
   for(const key of ['registrationOpensAt','registrationClosesAt','autoScheduleStartAt'] as const)if(updated[key]&&Number.isNaN(new Date(updated[key]!).getTime()))return bad(res,'Invalid date/time value');
   if(updated.registrationOpensAt&&updated.registrationClosesAt&&new Date(updated.registrationClosesAt)<=new Date(updated.registrationOpensAt))return bad(res,'Registration closing time must be after opening time');
   if(input.matchSchedule!==undefined){
@@ -447,6 +447,7 @@ router.put('/events/:id',async(req,res)=>{
     if(!Array.isArray(input.matchSchedule))return bad(res,'Match schedule must be a list');
     const schedule:MatchSlot[]=input.matchSchedule.map((s:any)=>({id:String(s.id||'').slice(0,80),match:Math.max(1,Math.min(updated.matches,Math.floor(Number(s.match)||1))),group:String(s.group||'All teams').slice(0,30),startsAt:String(s.startsAt||''),label:String(s.label||'').slice(0,80),status:['Scheduled','Delayed','Cancelled','Completed'].includes(s.status)?s.status:'Scheduled',delayReason:s.delayReason?String(s.delayReason).slice(0,120):undefined,updatedAt:s.updatedAt?String(s.updatedAt):undefined}));
     if(schedule.some(s=>!s.id||Number.isNaN(new Date(s.startsAt).getTime()))||new Set(schedule.map(s=>s.id)).size!==schedule.length)return bad(res,'Every match needs a unique ID and valid date/time');
+    const minGap=updated.type==='Tournament'?5:1;const byGroup=new Map<string,MatchSlot[]>();for(const slot of schedule){const list=byGroup.get(slot.group)||[];list.push(slot);byGroup.set(slot.group,list);}for(const list of byGroup.values()){list.sort((a,b)=>new Date(a.startsAt).getTime()-new Date(b.startsAt).getTime());for(let i=1;i<list.length;i++){const gap=(new Date(list[i].startsAt).getTime()-new Date(list[i-1].startsAt).getTime())/60000;if(gap<minGap)return bad(res,'Matches in the same group must be at least '+minGap+' minute(s) apart.',409);}}
     const completed=new Map((event!.matchSchedule||[]).filter(s=>s.status==='Completed').map(s=>[s.id,s]));
     if(schedule.some(s=>{const old=completed.get(s.id);return old&&(s.status!=='Completed'||s.startsAt!==old.startsAt);}))return bad(res,'A completed match cannot be rescheduled',409);
     updated.matchSchedule=schedule;
